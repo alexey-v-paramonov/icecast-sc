@@ -20,7 +20,7 @@
 #define ICE_RUNNING 1
 #define ICE_HALTING 2
 
-#define ICECAST_VERSION_STRING "Icecast " PACKAGE_VERSION
+#define ICECAST_VERSION_STRING "Icecast " PACKAGE_VERSION " (Streaming.Center)"
 
 #include <signal.h>
 #include "net/sock.h"
