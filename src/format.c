@@ -348,13 +348,13 @@ static int apply_client_tweaks (ice_http_t *http, format_plugin_t *plugin, clien
             if (strstr (useragent, "Shoutcast Server")) /* hack for sc_serv */
                 fmtcode |= FMT_LOWERCASE_TYPE;
 
-            if (search_ua_namever (useragent, "Safari/"))
-            {   // Safari is an oddball, seems to use multiple connections with one being a range request of 0-1 to get the
-                // size. To add to the confusion, chrome and others use the safari in the useragent, supposedly for compatability
-                // although is does do the same thing.
-                if (search_ua_namever (useragent, "Chrome/") == NULL && search_ua_namever (useragent, "Chromium/") == NULL)
-                    fmtcode |= FMT_REDIRECT_WPARAM|FMT_DROP_RANGE;
-            }
+            // if (search_ua_namever (useragent, "Safari/"))
+            // {   // Safari is an oddball, seems to use multiple connections with one being a range request of 0-1 to get the
+            //     // size. To add to the confusion, chrome and others use the safari in the useragent, supposedly for compatability
+            //     // although is does do the same thing.
+            //     if (search_ua_namever (useragent, "Chrome/") == NULL && search_ua_namever (useragent, "Chromium/") == NULL)
+            //         fmtcode |= FMT_REDIRECT_WPARAM|FMT_DROP_RANGE;
+            // }
             if (strstr (useragent, "BlackBerry"))
                 fmtcode |= FMT_RETURN_ICY;
         }
