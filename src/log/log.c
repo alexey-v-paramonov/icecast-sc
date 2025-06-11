@@ -673,14 +673,12 @@ void log_reopen(int log_id)
     } while (0);
     _unlock_logger();
 }
-
-
-
-// enter with q lock, exit with it unlock and destroyed
-//
 static void _log_close_internal (int log_id)
 {
     if (log_id < 0 || log_id >= LOG_MAXLOGS) return;
+
+    // Mark as not in use early to prevent new operations
+    loglist[log_id].in_use = 0;
 
     for (int loop = 0; loop < 10; ++loop)
         if (do_log_run (log_id) == 0)
@@ -712,17 +710,18 @@ static void _log_close_internal (int log_id)
     free (loglist [log_id].priorities);
     loglist [log_id].priorities = NULL;
     loglist [log_id].checked_entry = NULL;
-    _unlock_q (log_id);
-    if (_locks.mxc) _locks.mxc (&loglist [log_id].mutex, __FILE__, __LINE__, 0);
-    loglist [log_id].in_use = 0;
+    
+    // Destroy the mutex if we have the destroy function
+    if (_locks.mxc && loglist[log_id].mutex) {
+        _locks.mxc (&loglist [log_id].mutex, __FILE__, __LINE__, 0);
+        loglist[log_id].mutex = NULL;
+    }
 }
-
-
 void log_close(int log_id)
 {
     if (log_id < 0 || log_id >= LOG_MAXLOGS) return;
 
-    _lock_logger();
+    _wlock_logger();
     do
     {
         if (log_callback)
@@ -962,13 +961,26 @@ void log_set_commit_callback (log_commit_callback f)
 
 static int queue_entry (int log_id, log_entry_t *ent)
 {
+    // Check if log is still valid
+    if (log_id < 0 || log_id >= LOG_MAXLOGS || !loglist[log_id].in_use) {
+        _release_entry (log_id, ent, 0);
+        return -1;
+    }
+    
     log_t *log = &loglist [log_id];
     log_priority_t *pri = &log->priorities [ent->priority];
     int plen = 1 + ent->plen + ent->len;    // add space for NL
 
     _lock_q (log_id);
+    
+    // Double-check after acquiring lock
+    if (!loglist[log_id].in_use) {
+        _unlock_q (log_id);
+        _release_entry (log_id, ent, 0);
+        return -1;
+    }
+    
     // timed order list update
-
     if (log->log_tail)
         log->log_tail->next = ent;
     else
@@ -1001,8 +1013,6 @@ static int queue_entry (int log_id, log_entry_t *ent)
     }
     return 0;
 }
-
-
 int log_contents (int log_id, int level, char **_contents, unsigned int *_len)
 {
     int remain;
