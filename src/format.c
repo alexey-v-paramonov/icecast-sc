@@ -436,7 +436,8 @@ static int apply_client_tweaks (ice_http_t *http, format_plugin_t *plugin, clien
         uint64_t range = client->connection.discon.sent;
         char total_size [32] = "*";
 
-        if (range == 0 || (fs == NULL && range > (1<<30)))
+        //if (range == 0 || (fs == NULL && range > (1<<30)))
+        if (range == 0 || (fs == NULL))
         {       // ignore most range requests on streams, treat as full
             client->connection.discon.sent = 0;
             client->intro_offset = 0;
