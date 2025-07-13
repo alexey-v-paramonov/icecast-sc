@@ -1,0 +1,1 @@
+mv src/icecast src/icecast-kh && scp src/icecast-kh root@s02.radio-tochka.com:~/
