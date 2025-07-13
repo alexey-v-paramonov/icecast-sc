@@ -1,0 +1,5 @@
+apt install libcurl4-openssl-dev libxml2-dev libxslt1-dev libogg-dev libvorbis-dev libssl-dev build-essential
+./autogen.sh
+./configure --with-curl --with-openssl
+make -j$(nproc)
+sudo make install
