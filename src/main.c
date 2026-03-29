@@ -79,6 +79,7 @@ void fatal_error (const char *perr)
 #if defined(WIN32)
     MessageBox(NULL, perr, NULL, MB_SERVICE_NOTIFICATION);
 #else
+    fprintf(stderr, "%s\n", perr);
     ERROR1("%s", perr);
 #endif
 }

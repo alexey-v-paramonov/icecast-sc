@@ -2045,14 +2045,22 @@ int connection_setup_sockets (ice_config_t *config)
             if (socket_count == 0)
             {
                 if (listener->bind_address)
+                {
+                    fprintf (stderr, "Could not create listener socket on port %d bind %s\n",
+                            listener->port, listener->bind_address);
                     ERROR2 ("Could not create listener socket on port %d bind %s",
                             listener->port, listener->bind_address);
+                }
                 else
+                {
+                    fprintf (stderr, "Could not create listener socket on port %d\n", listener->port);
                     ERROR1 ("Could not create listener socket on port %d", listener->port);
+                }
             }
             if (sockets_setup)
             {
                 global_unlock();
+                fprintf (stderr, "unable to setup all listening sockets\n");
                 ERROR0 ("unable to setup all listening sockets");
                 return 0;
             }
