@@ -414,7 +414,7 @@ void thread_mutex_destroy_c (mutex_t *mutex, int line, const char *file)
     int rc = pthread_mutex_destroy(&mutex->sys_mutex);
     if (rc)
     {
-        log_write (thread_log, 1, "thread/", "mutex", "destroy error triggered at %s:%d (%d)", file, line, rc);
+        fprintf (stderr, "thread/mutex destroy error triggered at %s:%d (%d)\n", file, line, rc);
         abort();
     }
 
@@ -582,7 +582,7 @@ void thread_rwlock_rlock_c(rwlock_t *rwlock, int line, const char *file)
         rc = pthread_rwlock_rdlock(&rwlock->sys_rwlock);
     if (rc)
     {
-        log_write (thread_log, 1, "thread/", "rwlock", "rlock error triggered at %p, %s:%d (%d)", rwlock, file, line, rc);
+        fprintf (stderr, "thread/rwlock rlock error triggered at %p, %s:%d (%d)\n", rwlock, file, line, rc);
         abort();
     }
 #ifdef THREAD_DEBUG
@@ -612,7 +612,7 @@ void thread_rwlock_wlock_c(rwlock_t *rwlock, int line, const char *file)
         rc = pthread_rwlock_wrlock(&rwlock->sys_rwlock);
     if (rc)
     {
-        log_write (thread_log, 1, "thread/", "rwlock", "wlock error triggered at %p, %s:%d (%d)", rwlock, file, line, rc);
+        fprintf (stderr, "thread/rwlock wlock error triggered at %p, %s:%d (%d)\n", rwlock, file, line, rc);
         abort();
     }
 #ifdef THREAD_DEBUG
