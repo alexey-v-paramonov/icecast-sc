@@ -942,6 +942,7 @@ void log_commit_entries ()
             if (loglist [log_id].in_use && (loglist [log_id].flags & LOG_CLOSING))
             {
                 _lock_q (log_id);
+                _unlock_q (log_id);
                 _log_close_internal (log_id);
                 closing--;
             }
