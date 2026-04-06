@@ -25,9 +25,43 @@ typedef struct source_tag source_t;
 #include "format_opus.h"
 #include "refbuf.h"
 #include "client.h"
+#include "util.h"
 
 #define CATMODULE "format-opus"
 #include "logging.h"
+
+static void opus_set_tag (format_plugin_t *plugin, const char *tag, const char *in_value, const char *charset)
+{
+    ogg_state_t *ogg_info = plugin->_state;
+    char *value;
+
+    if (ogg_info->use_url_metadata == 0)
+        return;
+
+    if (tag == NULL)
+    {
+        ogg_info->log_metadata = 1;
+        return;
+    }
+
+    value = util_conv_string (in_value, charset, "UTF-8");
+    if (value == NULL && in_value)
+        value = strdup (in_value);
+
+    if (strcmp (tag, "artist") == 0)
+    {
+        free (ogg_info->artist);
+        ogg_info->artist = value;
+    }
+    else if (strcmp (tag, "title") == 0 || strcmp (tag, "song") == 0)
+    {
+        free (ogg_info->title);
+        ogg_info->title = value;
+    }
+    else
+        free (value);
+}
+
 
 static void opus_codec_free (ogg_state_t *ogg_info, ogg_codec_t *codec)
 {
@@ -85,6 +119,7 @@ ogg_codec_t *initial_opus_page (format_plugin_t *plugin, ogg_page *page)
     codec->parent = ogg_info;
     codec->name = "Opus";
     format_ogg_attach_header (codec, page);
+    plugin->set_tag = opus_set_tag;
     return codec;
 }
 
