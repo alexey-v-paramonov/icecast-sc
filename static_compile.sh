@@ -473,6 +473,7 @@ pushd "${BUILD_DIR}/openssl-${VER_OPENSSL}" >/dev/null
         no-gost \
         no-tests \
         --prefix="${DEPS_PREFIX}" \
+        --libdir="${DEPS_PREFIX}/lib" \
         --openssldir="${DEPS_PREFIX}/etc/ssl" \
         CC="${CC_CMD}" \
         CFLAGS="${COMMON_CFLAGS}"
