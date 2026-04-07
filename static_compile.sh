@@ -238,6 +238,12 @@ if [[ "${_ac_major}" -lt 2 ]] || { [[ "${_ac_major}" -eq 2 ]] && [[ "${_ac_minor
 fi
 unset _ac_ver _ac_major _ac_minor
 
+# Save the original PATH before we prepend our private prefix.
+# Libigloo's autoreconf must use a fully consistent set of system autotools;
+# mixing our bootstrapped autoconf 2.72 binary with the system autom4te/aclocal
+# causes autoconf's own standard macros to become invisible (AC_MSG_ERROR etc.).
+ORIGINAL_PATH="${PATH}"
+
 # Ensure our private bin dir is always first on PATH (new autoconf/automake/etc.)
 export PATH="${DEPS_PREFIX}/bin:${PATH}"
 
@@ -566,6 +572,10 @@ pushd "${BUILD_DIR}/icecast-libigloo-v${VER_IGLOO}" >/dev/null
     # CentOS 7 + devtoolset-11), making all pthread probes fail even with
     # -lpthread.  Replace the macro with a trivial stub before autoreconf so
     # the generated configure just uses -lpthread unconditionally.
+    # Patch acx_pthread.m4 on all platforms: the bundled version uses the
+    # obsolete AC_TRY_LINK/AC_LANG_C macros whose compat shims in modern
+    # autoconf can interact badly with m4 diversions and cause cascading
+    # "possibly undefined macro" errors for unrelated macros.
     cat > m4/acx_pthread.m4 <<'ENDOFM4'
 AC_DEFUN([ACX_PTHREAD],[
   AC_SUBST(PTHREAD_LIBS)
@@ -576,9 +586,17 @@ AC_DEFUN([ACX_PTHREAD],[
   AC_MSG_RESULT([yes])
 ])
 ENDOFM4
-    # Always re-run autoreconf to regenerate build-aux files with the local
-    # automake (important on CentOS 7 where we bootstrapped a newer automake)
-    autoreconf -fi
+    if [[ "${OS_ID}" == centos7* ]]; then
+        # CentOS 7: system automake 1.13.4 is too old; use our bootstrapped tools.
+        autoreconf -fi
+    else
+        # Ubuntu: run autoreconf with the original system PATH so that autoreconf,
+        # aclocal, autoconf, autoheader, and automake are all consistent system
+        # versions.  Mixing our bootstrapped autoconf 2.72 binary (which may be
+        # present in deps/bin from a previous run) with the system autom4te causes
+        # autoconf's own standard macros to become invisible.
+        env PATH="${ORIGINAL_PATH}" autoreconf -fi
+    fi
     ./configure \
         --prefix="${DEPS_PREFIX}" \
         CFLAGS="${COMMON_CFLAGS}" \
