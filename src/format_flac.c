@@ -29,9 +29,43 @@ typedef struct source_tag source_t;
 #include "client.h"
 #include "stats.h"
 #include "global.h"
+#include "util.h"
 
 #define CATMODULE "format-flac"
 #include "logging.h"
+
+
+static void flac_set_tag (format_plugin_t *plugin, const char *tag, const char *in_value, const char *charset)
+{
+    ogg_state_t *ogg_info = plugin->_state;
+    char *value;
+
+    if (ogg_info->use_url_metadata == 0)
+        return;
+
+    if (tag == NULL)
+    {
+        ogg_info->log_metadata = 1;
+        return;
+    }
+
+    value = util_conv_string (in_value, charset, "UTF-8");
+    if (value == NULL && in_value)
+        value = strdup (in_value);
+
+    if (strcmp (tag, "artist") == 0)
+    {
+        free (ogg_info->artist);
+        ogg_info->artist = value;
+    }
+    else if (strcmp (tag, "title") == 0 || strcmp (tag, "song") == 0)
+    {
+        free (ogg_info->title);
+        ogg_info->title = value;
+    }
+    else
+        free (value);
+}
 
 
 static void flac_codec_free (ogg_state_t *ogg_info, ogg_codec_t *codec)
@@ -171,6 +205,7 @@ ogg_codec_t *initial_flac_page (format_plugin_t *plugin, ogg_page *page)
         codec->headers = 1;
         codec->parent = ogg_info;
         codec->name = "FLAC";
+        plugin->set_tag = flac_set_tag;
 
         format_ogg_attach_header (codec, page);
         return codec;
