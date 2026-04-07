@@ -555,14 +555,34 @@ echo
 echo "==> Building libigloo ${VER_IGLOO}..."
 fetch "https://gitlab.xiph.org/xiph/icecast-libigloo/-/archive/v${VER_IGLOO}/icecast-libigloo-v${VER_IGLOO}.tar.gz" \
       "icecast-libigloo-v${VER_IGLOO}.tar.gz"
+# Always re-extract so our m4/acx_pthread.m4 patch is applied to a clean tree.
+# (The tarball is cached locally so this is fast.)
+rm -rf "${BUILD_DIR}/icecast-libigloo-v${VER_IGLOO}"
 extract "icecast-libigloo-v${VER_IGLOO}.tar.gz" "icecast-libigloo-v${VER_IGLOO}"
 pushd "${BUILD_DIR}/icecast-libigloo-v${VER_IGLOO}" >/dev/null
+    # The bundled acx_pthread.m4 uses the obsolete AC_TRY_LINK macro.  When
+    # autoreconf regenerates configure with autoconf 2.72 the compat shim for
+    # AC_TRY_LINK silently returns false for every link test (observed on
+    # CentOS 7 + devtoolset-11), making all pthread probes fail even with
+    # -lpthread.  Replace the macro with a trivial stub before autoreconf so
+    # the generated configure just uses -lpthread unconditionally.
+    cat > m4/acx_pthread.m4 <<'ENDOFM4'
+AC_DEFUN([ACX_PTHREAD],[
+  AC_SUBST(PTHREAD_LIBS)
+  AC_SUBST(PTHREAD_CFLAGS)
+  test -n "$PTHREAD_LIBS"  || PTHREAD_LIBS="-lpthread"
+  test -n "$PTHREAD_CFLAGS" || PTHREAD_CFLAGS=""
+  AC_MSG_CHECKING([for POSIX threads])
+  AC_MSG_RESULT([yes])
+])
+ENDOFM4
     # Always re-run autoreconf to regenerate build-aux files with the local
     # automake (important on CentOS 7 where we bootstrapped a newer automake)
     autoreconf -fi
     ./configure \
         --prefix="${DEPS_PREFIX}" \
-        CFLAGS="${COMMON_CFLAGS}"
+        CFLAGS="${COMMON_CFLAGS}" \
+        LIBS="-lm"
     make -j"${JOBS}"
     make install
 popd >/dev/null
