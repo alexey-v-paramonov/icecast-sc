@@ -241,6 +241,7 @@ int client_send_403redirect (client_t *client, const char *mount, const char *re
 int client_send_401 (client_t *client, const char *realm)
 {
     ice_http_t http = ICE_HTTP_INIT;
+    client->flags &= ~CLIENT_KEEPALIVE;
     if (ice_http_setup_flags (&http, client, 401, 0, NULL) < 0) return -1;
     client_set_queue (client,NULL);
     ice_http_printf (&http, "WWW-Authenticate", 0, "Basic realm=\"%s\"", (realm ? realm : http.in_realm));
@@ -251,6 +252,7 @@ int client_send_401 (client_t *client, const char *realm)
 int client_send_403 (client_t *client, const char *reason)
 {
     ice_http_t http = ICE_HTTP_INIT;
+    client->flags &= ~CLIENT_KEEPALIVE;
     client_set_queue (client,NULL);
     if (ice_http_setup_flags (&http, client, 403, 0, reason) < 0) return -1;
     return client_http_send (&http);
@@ -1109,4 +1111,3 @@ void worker_logger (int stop)
     }
     thread_create ("Log Thread", log_commit_thread, NULL, THREAD_DETACHED);
 }
-

@@ -1878,7 +1878,7 @@ static int _handle_get_request (client_t *client)
     config_release_config();
 
     global_lock();
-    if (global.clients > config->client_limit)
+    if (global.clients > client_limit)
     {
         client_limit_reached = 1;
         WARN3 ("server client limit reached (%d/%d) for %s", client_limit, global.clients, client->connection.ip);
@@ -2118,4 +2118,3 @@ void connection_close(connection_t *con)
     memset (con, 0, sizeof (connection_t));
     con->sock = SOCK_ERROR;
 }
-
