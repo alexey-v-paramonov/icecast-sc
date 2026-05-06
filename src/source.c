@@ -2592,6 +2592,8 @@ static int source_listener_release (source_t *source, client_t *client)
     int ret;
     mount_proxy *mountinfo;
 
+    client->flags &= ~CLIENT_KEEPALIVE;
+
     if (client->shared_data == source) // still attached to source?
     {
         while (1)

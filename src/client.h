@@ -183,6 +183,7 @@ void logger_commits (int id);
 #define CLIENT_RANGE_END            (1<<11)
 #define CLIENT_KEEPALIVE            (1<<12)
 #define CLIENT_CHUNKED              (1<<13)
+#define CLIENT_AUTH_PENDING         (1<<14)
 #define CLIENT_FORMAT_BIT           (1<<16)
 
 #endif  /* __CLIENT_H__ */

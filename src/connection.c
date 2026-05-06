@@ -460,6 +460,9 @@ int connection_read_ssl (connection_t *con, void *buf, size_t len)
 
 int connection_send_ssl (connection_t *con, const void *buf, size_t len)
 {
+    if (connection_unreadable (con))
+        return -1;
+
     ERR_clear_error();
     int bytes = SSL_write (con->ssl, buf, len);
     int code = SSL_get_error (con->ssl, bytes);

@@ -60,6 +60,7 @@ static int  auth_postprocess_listener (auth_client *auth_user);
 static void auth_postprocess_source (auth_client *auth_user);
 static int  wait_for_auth (client_t *client);
 static void auth_client_free (auth_client *auth_user);
+static void auth_client_close (client_t *client);
 
 
 struct _client_functions auth_release_ops =
@@ -74,6 +75,22 @@ static int wait_for_auth (client_t *client)
     DEBUG0 ("client finished with auth");
     client->flags &= ~CLIENT_AUTHENTICATED;
     return -1;
+}
+
+
+static void auth_client_close (client_t *client)
+{
+    if (client == NULL)
+        return;
+
+    client->flags &= ~(CLIENT_KEEPALIVE|CLIENT_AUTH_PENDING|CLIENT_AUTHENTICATED);
+    client->connection.error = CONN_ERR_DOWN;
+    if (client->worker)
+    {
+        DEBUG1 ("auth client %" PRIu64 " still on worker during close", CONN_ID(client));
+        return;
+    }
+    client_destroy (client);
 }
 
 
@@ -147,7 +164,7 @@ static void queue_auth_client (auth_client *auth_user, mount_proxy *mountinfo)
         return;
     auth = mountinfo->auth;
     if (auth_user->client)
-        auth_user->client->worker = NULL;
+        auth_user->client->flags |= CLIENT_AUTH_PENDING;
     thread_mutex_lock (&auth->lock);
     auth_user->next = NULL;
     auth_user->auth = auth;
@@ -236,8 +253,10 @@ static void auth_client_free (auth_client *auth_user)
     {
         client_t *client = auth_user->client;
 
-        client_send_401 (client, auth_user->auth->realm);
         auth_user->client = NULL;
+        client->flags &= ~CLIENT_AUTH_PENDING;
+        if (client_send_401 (client, auth_user->auth ? auth_user->auth->realm : NULL) < 0)
+            auth_client_close (client);
     }
     free (auth_user->hostname);
     free (auth_user->mount);
@@ -258,6 +277,8 @@ static void auth_new_listener (auth_client *auth_user)
     {
         DEBUG1 ("dropping listener #%" PRIu64 " connection", client->connection.id);
         client->respcode = 400;
+        auth_user->client = NULL;
+        auth_client_close (client);
         return;
     }
     if (auth_user->auth->authenticate)
@@ -392,6 +413,17 @@ static void *auth_run_thread (void *arg)
             /* associate per-thread data with auth_user here */
             auth_user->thread_data = handler->data;
             auth_user->handler = id;
+
+            if (auth_user->client && (auth_user->client->flags & CLIENT_AUTH_PENDING))
+            {
+                int loop = 1000;
+                while (auth_user->client->worker && loop--)
+                    thread_sleep (1000);
+                if (auth_user->client->worker)
+                    WARN1 ("auth client %" PRIu64 " still attached to worker after handoff wait", CONN_ID(auth_user->client));
+                else
+                    auth_user->client->flags &= ~CLIENT_AUTH_PENDING;
+            }
 
             if (auth_user->process)
                 auth_user->process (auth_user);
@@ -748,10 +780,11 @@ int auth_add_listener (const char *mount, client_t *client)
  */
 int auth_release_listener (client_t *client, const char *mount, mount_proxy *mountinfo)
 {
+    client->flags &= ~CLIENT_KEEPALIVE;
+
     if (client->flags & CLIENT_AUTHENTICATED)
     {
         client_set_queue (client, NULL);
-        client->flags &= ~CLIENT_KEEPALIVE;
 
         if (mount && mountinfo && mountinfo->auth && mountinfo->auth->release_listener)
         {
@@ -987,4 +1020,3 @@ void auth_shutdown (void)
     thread_rwlock_destroy (&auth_lock);
     INFO0 ("Auth shutdown complete");
 }
-

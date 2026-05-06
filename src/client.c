@@ -888,7 +888,15 @@ void *worker (void *arg)
             thread_mutex_lock (&worker->lock);
             if (ret)
             {
+                int auth_pending = ret > 0 && (client->flags & CLIENT_AUTH_PENDING);
                 worker_removed_client (&wc, nxc);
+                if (auth_pending)
+                {
+                    client->worker = NULL;
+                    client->flags &= ~CLIENT_AUTH_PENDING;
+                    if (client->connection.error)
+                        client_destroy (client);
+                }
                 continue;
             }
             worker_next_client (&wc);
