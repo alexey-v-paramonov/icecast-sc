@@ -330,7 +330,8 @@ static auth_result auth_cmd_client (auth_client *auth_user)
                     referer ? referer : "");
             free (agent);
             free (referer);
-            write (outfd[1], str, len);
+            if (write (outfd[1], str, len) < 0)
+                ERROR1 ("write to auth command failed: %s", strerror (errno));
             close (outfd[1]);
             get_response (infd[0], auth_user, pid);
             close (infd[0]);
