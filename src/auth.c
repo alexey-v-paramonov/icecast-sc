@@ -751,6 +751,7 @@ int auth_release_listener (client_t *client, const char *mount, mount_proxy *mou
     if (client->flags & CLIENT_AUTHENTICATED)
     {
         client_set_queue (client, NULL);
+        client->flags &= ~CLIENT_KEEPALIVE;
 
         if (mount && mountinfo && mountinfo->auth && mountinfo->auth->release_listener)
         {
@@ -762,8 +763,9 @@ int auth_release_listener (client_t *client, const char *mount, mount_proxy *mou
             return 1;
         }
         client->flags &= ~CLIENT_AUTHENTICATED;
+        return -1;
     }
-    return client_send_404 (client, NULL);
+    return -1;
 }
 
 

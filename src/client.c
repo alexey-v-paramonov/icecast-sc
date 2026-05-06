@@ -261,6 +261,7 @@ int client_send_403 (client_t *client, const char *reason)
 int client_send_404 (client_t *client, const char *message)
 {
     ice_http_t http = ICE_HTTP_INIT;
+    client->flags &= ~CLIENT_KEEPALIVE;
     if (ice_http_setup_flags (&http, client, 404, 0, NULL) < 0) return -1;
     client_set_queue (client,NULL);
     if (message)
