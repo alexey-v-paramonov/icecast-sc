@@ -687,4 +687,10 @@ git -C "${SCRIPT_DIR}" restore \
     src/thread/Makefile.in src/timing/Makefile.in \
     web/Makefile.in web/images/Makefile.in \
     windows/Makefile.in \
+    aclocal.m4 \
+    build-aux/config.guess \
+    build-aux/config.sub \
+    build-aux/install-sh \
+    config.h.in \
+    configure \
     2>/dev/null || true
