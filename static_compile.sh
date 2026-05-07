@@ -600,7 +600,8 @@ ENDOFM4
     ./configure \
         --prefix="${DEPS_PREFIX}" \
         CFLAGS="${COMMON_CFLAGS}" \
-        LIBS="-lm"
+        LIBS="-lm" \
+        ac_cv_search_log2="-lm"
     make -j"${JOBS}"
     make install
 popd >/dev/null
