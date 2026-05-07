@@ -599,6 +599,10 @@ ENDOFM4
     fi
     ./configure \
         --prefix="${DEPS_PREFIX}" \
+        CPPFLAGS="-I${DEPS_PREFIX}/include" \
+        LDFLAGS="-L${DEPS_PREFIX}/lib" \
+        LIBRHASH_CFLAGS="-I${DEPS_PREFIX}/include" \
+        LIBRHASH_LIBS="-L${DEPS_PREFIX}/lib -lrhash" \
         CFLAGS="${COMMON_CFLAGS}" \
         LIBS="-lm" \
         ac_cv_search_log2="-lm"
@@ -613,12 +617,11 @@ echo
 echo "==> Configuring Icecast..."
 pushd "${SCRIPT_DIR}" >/dev/null
 
-# Always regenerate configure so it is compatible with the local automake.
-# Use the original system PATH so that autoreconf, aclocal, autoconf, and
-# automake are all consistent system versions.  If a bootstrapped autoconf
-# was installed into DEPS_PREFIX/bin it will have the old prefix hard-coded
-# in its Perl @INC and will fail to find autoconf's own modules.
-env PATH="${ORIGINAL_PATH}" autoreconf -fi
+# Always regenerate configure so it is compatible with the bootstrapped
+# autoconf/automake in DEPS_PREFIX/bin.  Icecast configure.ac requires
+# autoconf >= 2.71; on Ubuntu 20 and CentOS 7 the system autoconf is 2.69
+# so we must use the bootstrapped 2.72 that lives in DEPS_PREFIX/bin.
+autoreconf -fi
 
 # Re-run configure unconditionally so it picks up all our fresh deps.
 # icecast-kh uses XIPH_PATH_OGG/VORBIS/SPEEX/THEORA macros that resolve
