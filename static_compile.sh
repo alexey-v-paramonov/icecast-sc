@@ -673,21 +673,18 @@ ldd "${OUTPUT_BINARY}" 2>&1 || true
 # autoreconf -fi regenerates all of these during the build; reverting them
 # prevents noisy git diffs when switching between platforms.
 # ---------------------------------------------------------------------------
-if git -C "${SCRIPT_DIR}" rev-parse --is-inside-work-tree &>/dev/null; then
-    echo
-    echo "==> Restoring autotools-generated files..."
-    git -C "${SCRIPT_DIR}" restore \
-        Makefile.in aclocal.m4 configure config.h.in \
-        admin/Makefile.in \
-        build-aux/config.guess build-aux/config.sub \
-        build-aux/install-sh build-aux/ltmain.sh \
-        conf/Makefile.in \
-        doc/Makefile.in \
-        src/Makefile.in \
-        src/avl/Makefile.in src/httpp/Makefile.in \
-        src/log/Makefile.in src/net/Makefile.in \
-        src/thread/Makefile.in src/timing/Makefile.in \
-        web/Makefile.in web/images/Makefile.in \
-        windows/Makefile.in \
-        2>/dev/null || true
-fi
+echo "==> Restoring autotools-generated files..."
+git -C "${SCRIPT_DIR}" restore \
+    Makefile.in aclocal.m4 configure config.h.in \
+    admin/Makefile.in \
+    build-aux/config.guess build-aux/config.sub \
+    build-aux/install-sh build-aux/ltmain.sh \
+    conf/Makefile.in \
+    doc/Makefile.in \
+    src/Makefile.in \
+    src/avl/Makefile.in src/httpp/Makefile.in \
+    src/log/Makefile.in src/net/Makefile.in \
+    src/thread/Makefile.in src/timing/Makefile.in \
+    web/Makefile.in web/images/Makefile.in \
+    windows/Makefile.in \
+    2>/dev/null || true
