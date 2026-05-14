@@ -267,9 +267,23 @@ static size_t handle_url_header (void *ptr, size_t size, size_t nmemb, void *str
         char hvalue [remain];
         sscanf (header_val, "%[^\r\n]", hvalue); // local copy with nul, no EOL
 
-        if (strncasecmp (header, url->auth_header, url->auth_header_len) == 0)
+        char *configured_header_value = url->auth_header ? strchr (url->auth_header, ':') : NULL;
+        int configured_header_len = configured_header_value ? (int)(configured_header_value - url->auth_header) : url->auth_header_len;
+
+        if (configured_header_len == header_len &&
+                strncasecmp (header, url->auth_header, configured_header_len) == 0)
         {
-            auth_user->flags |= CLIENT_AUTHENTICATED;
+            int allow = 1;
+            if (configured_header_value)
+            {
+                configured_header_value++;
+                while (*configured_header_value && isblank (*configured_header_value))
+                    configured_header_value++;
+                if (*configured_header_value && strcasecmp (configured_header_value, hvalue) != 0)
+                    allow = 0;
+            }
+            if (allow)
+                auth_user->flags |= CLIENT_AUTHENTICATED;
             if (remain >= 9 && strncasecmp (hvalue, "withintro", 9) == 0)
                 auth_user->flags |= CLIENT_HAS_INTRO_CONTENT;
             if (remain > 5 && strncasecmp (hvalue, "hijack", 6) == 0)
@@ -489,6 +503,7 @@ static auth_result url_add_listener (auth_client *auth_user)
     auth_thread_data *atd = auth_user->thread_data;
 
     int res = 0, ret = AUTH_FAILED;
+    long response_code = 0;
     char *userpwd = NULL;
 
     client_set_queue (client, NULL);
@@ -597,6 +612,7 @@ static auth_result url_add_listener (auth_client *auth_user)
 
     DEBUG3 ("handler %d (%s) sending request (client %" PRI_ConnID ")", auth_user->handler, auth_user->mount, CONN_ID(client));
     res = do_curl_perform (atd->curl, auth_user, "listener add");
+    curl_easy_getinfo (atd->curl, CURLINFO_RESPONSE_CODE, &response_code);
     DEBUG3 ("handler %d (%s) request finished (client %" PRI_ConnID ")", auth_user->handler, auth_user->mount, CONN_ID(client));
     client->aux_data = (uintptr_t)0;
 
@@ -630,6 +646,10 @@ static auth_result url_add_listener (auth_client *auth_user)
         {
             auth_user->flags |= CLIENT_AUTHENTICATED;
             ret = AUTH_OK;
+            DEBUG4 ("AUTH401 fail-open allowed client %" PRI_ConnID " on %s from %s after auth URL error http=%ld",
+                    CONN_ID(client), auth_user->mount, CONN_ADDR(client), response_code);
+            DEBUG2 ("AUTH401 fail-open details client %" PRI_ConnID " error=%s",
+                    CONN_ID(client), atd->errormsg);
         }
     }
     /* better cleanup memory */
@@ -654,8 +674,26 @@ static auth_result url_add_listener (auth_client *auth_user)
         INFO3 ("listener %s (%s) returned \"%s\"", client->connection.ip, url->listener_add.url, atd->errormsg);
         if (atoi (atd->errormsg) == 403)
         {
+            DEBUG4 ("AUTH401 auth URL denied client %" PRI_ConnID " on %s from %s http=%ld",
+                    CONN_ID(client), auth_user->mount, CONN_ADDR(client), response_code);
+            DEBUG2 ("AUTH401 auth URL deny details client %" PRI_ConnID " message=%s",
+                    CONN_ID(client), atd->errormsg);
             auth_user->client = NULL;
             client_send_403 (client, atd->errormsg+4);
+        }
+    }
+    if (ret != AUTH_OK && auth_user->client)
+    {
+        DEBUG4 ("AUTH401 auth URL did not allow client %" PRI_ConnID " on %s from %s http=%ld",
+                CONN_ID(client), auth_user->mount, CONN_ADDR(client), response_code);
+        DEBUG3 ("AUTH401 auth URL missing/invalid allow header client %" PRI_ConnID " error='%s' expected_header='%s'",
+                CONN_ID(client), atd->errormsg[0] ? atd->errormsg : "-", url->auth_header ? url->auth_header : "-");
+        if (auth->flags & AUTH_SKIP_IF_SLOW)
+        {
+            DEBUG3 ("AUTH401 fail-open allowed client %" PRI_ConnID " on %s from %s after auth URL did not allow",
+                    CONN_ID(client), auth_user->mount, CONN_ADDR(client));
+            auth_user->flags |= CLIENT_AUTHENTICATED;
+            ret = AUTH_OK;
         }
     }
     return ret;
@@ -1026,4 +1064,3 @@ int auth_get_url_auth (auth_t *authenticator, config_options_t *options)
     return -1;
 #endif
 }
-

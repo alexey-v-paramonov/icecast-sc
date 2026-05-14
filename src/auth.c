@@ -255,6 +255,8 @@ static void auth_client_free (auth_client *auth_user)
 
         auth_user->client = NULL;
         client->flags &= ~CLIENT_AUTH_PENDING;
+        DEBUG4 ("AUTH401 default auth cleanup for client %" PRIu64 " on %s from %s respcode=%d",
+                CONN_ID(client), auth_user->mount ? auth_user->mount : "-", CONN_ADDR(client), client->respcode);
         if (client_send_401 (client, auth_user->auth ? auth_user->auth->realm : NULL) < 0)
             auth_client_close (client);
     }
@@ -283,12 +285,15 @@ static void auth_new_listener (auth_client *auth_user)
     }
     if (auth_user->auth->authenticate)
     {
-        switch (auth_user->auth->authenticate (auth_user))
+        auth_result result = auth_user->auth->authenticate (auth_user);
+        switch (result)
         {
             case AUTH_OK:
             case AUTH_FAILED:
                 break;
             default:
+                DEBUG4 ("AUTH401 listener auth returned unexpected result %d for client %" PRIu64 " on %s from %s",
+                        result, CONN_ID(client), auth_user->mount ? auth_user->mount : "-", CONN_ADDR(client));
                 return;
         }
     }
@@ -603,12 +608,26 @@ static int auth_postprocess_listener (auth_client *auth_user)
     if ((auth_user->flags & CLIENT_AUTHENTICATED) == 0)
     {
         /* auth failed so do we place the listener elsewhere */
-        auth_user->client = NULL;
         if (auth->rejected_mount)
+        {
+            auth_user->client = NULL;
             mount = auth->rejected_mount;
+        }
+        else if (auth->flags & AUTH_SKIP_IF_SLOW)
+        {
+            DEBUG4 ("AUTH401 fail-open in listener postprocess client %" PRIu64 " on %s from %s flags=0x%x",
+                    CONN_ID(client), mount ? mount : "-", CONN_ADDR(client), auth_user->flags);
+            auth_user->flags |= CLIENT_AUTHENTICATED;
+            client->flags = auth_user->flags;
+        }
         else
         {
+            auth_user->client = NULL;
             DEBUG1 ("listener #%" PRIu64 " rejected", client->connection.id);
+            DEBUG4 ("AUTH401 rejecting listener client %" PRIu64 " on %s from %s flags=0x%x",
+                    CONN_ID(client), mount ? mount : "-", CONN_ADDR(client), auth_user->flags);
+            DEBUG2 ("AUTH401 reject details client %" PRIu64 " respcode=%d",
+                    CONN_ID(client), client->respcode);
             client_send_401 (client, auth_user->auth->realm);
             return -1;
         }
