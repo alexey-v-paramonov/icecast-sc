@@ -196,7 +196,7 @@ int format_file_read (client_t *client, format_plugin_t *plugin, icefile_handle 
 
     do
     {
-        len = 4096;
+        len = 16384;
         if (refbuf == NULL)
         {
             if (file_in_use (f) == 0)
@@ -547,4 +547,3 @@ int format_client_headers (format_plugin_t *plugin, ice_http_t *http, client_t *
     }
     return 0;
 }
-
