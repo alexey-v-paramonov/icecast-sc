@@ -265,6 +265,7 @@ static size_t handle_url_header (void *ptr, size_t size, size_t nmemb, void *str
         if (remain > 8192)
             return 0;
         char hvalue [remain];
+        hvalue[0] = '\0'; // initialise in case sscanf matches nothing (e.g. bare CRLF)
         sscanf (header_val, "%[^\r\n]", hvalue); // local copy with nul, no EOL
 
         char *configured_header_value = url->auth_header ? strchr (url->auth_header, ':') : NULL;
