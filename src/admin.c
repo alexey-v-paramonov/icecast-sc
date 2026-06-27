@@ -1024,7 +1024,8 @@ static int command_metadata (client_t *client, source_t *source, int response)
             stats_event (source->mount, "artwork", artwork);
         if (intro)
         {
-            source_set_intro (source, NULL, intro);
+            if (source_set_intro (source, NULL, intro) < 0)
+                break;
         }
         if (plugin->set_tag)
         {
