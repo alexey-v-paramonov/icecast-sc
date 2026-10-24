@@ -45,6 +45,13 @@ typedef struct auth_client_tag
     uint32_t     flags;
     unsigned char state;
     client_t    *client;
+    uint64_t     client_id;
+    time_t       connect_time;
+    char        *client_ip;
+    char        *client_agent;
+    char        *client_user;
+    char        *client_pass;
+    char        *client_mount;
     struct auth_tag *auth;
     void        *thread_data;
     void        (*process)(struct auth_client_tag *auth_user);

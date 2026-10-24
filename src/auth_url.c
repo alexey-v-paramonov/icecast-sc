@@ -126,6 +126,7 @@ typedef struct {
 
     req_settings_t listener_add;
     req_settings_t listener_remove;
+    req_settings_t listener_remove_sc;
     req_settings_t mount_add;
     req_settings_t mount_remove;
     req_settings_t stream_auth;
@@ -166,6 +167,7 @@ static void auth_url_clear(auth_t *self)
     free (url->password);
     clear_url_settings (&url->listener_add);
     clear_url_settings (&url->listener_remove);
+    clear_url_settings (&url->listener_remove_sc);
     clear_url_settings (&url->mount_add);
     clear_url_settings (&url->mount_remove);
     clear_url_settings (&url->stream_auth);
@@ -488,6 +490,101 @@ static auth_result url_remove_listener (auth_client *auth_user)
     }
     else
         DEBUG3 ("...handler %d (%s) request complete (client %" PRI_ConnID ")", auth_user->handler, auth_user->mount, CONN_ID(client));
+
+    free (userpwd);
+    refbuf_release (rb);
+
+    return AUTH_OK;
+}
+
+
+static auth_result url_remove_listener_sc (auth_client *auth_user)
+{
+    auth_url *url = auth_user->auth->state;
+    auth_thread_data *atd = auth_user->thread_data;
+    time_t now = time(NULL);
+    char *userpwd = NULL;
+
+    if (url->listener_remove_sc.url == NULL)
+        return AUTH_OK;
+    uint64_t duration = now >= auth_user->connect_time
+        ? (uint64_t)(now - auth_user->connect_time) : 0;
+    thread_mutex_lock (&url->updating);
+    do
+    {
+        if (url->listener_remove_sc.stop_until < now)
+        {
+            if (url->listener_remove_sc.stop_until)
+                url->listener_remove_sc.stop_until = (time_t)0;
+            break;
+        }
+        thread_mutex_unlock (&url->updating);
+        WARN3 ("auth on %s disabled (client %" PRI_ConnID", handler %d)", auth_user->mount, auth_user->client_id, auth_user->handler);
+        return AUTH_FAILED;
+    } while (0);
+    thread_mutex_unlock (&url->updating);
+
+    ice_params_t post;
+    ice_params_setup (&post, "=", "&", PARAMS_ESC);
+    ice_params_printf (&post, "action", PARAM_AS,       "listener_remove");
+    ice_params_printf (&post, "server", 0,              "%s", auth_user->hostname);
+    ice_params_printf (&post, "port",   PARAM_AS,       "%d", auth_user->port);
+    ice_params_printf (&post, "client", PARAM_AS,       "%" PRIu64, auth_user->client_id);
+    ice_params_printf (&post, "mount",  0,              "%s", auth_user->client_mount ? auth_user->client_mount : auth_user->mount);
+    ice_params_printf (&post, "user",   0,              "%s", auth_user->client_user ? auth_user->client_user : "");
+    ice_params_printf (&post, "pass",   0,              "%s", auth_user->client_pass ? auth_user->client_pass : "");
+    ice_params_printf (&post, "ip",     0,              "%s", auth_user->client_ip ? auth_user->client_ip : "");
+    ice_params_printf (&post, "agent",  0,              "%s", auth_user->client_agent ? auth_user->client_agent : "-");
+    ice_params_printf (&post, "duration", PARAM_AS,     "%" PRIu64, duration);
+    refbuf_t *rb = ice_params_complete (&post);
+    if (rb == NULL) return AUTH_FAILED;
+
+    if (strchr (url->listener_remove_sc.url, '@') == NULL)
+    {
+        if (url->userpwd)
+            curl_easy_setopt (atd->curl, CURLOPT_USERPWD, url->userpwd);
+        else
+        {
+            /* auth'd requests may not have a user/pass, but may use query args */
+            if (auth_user->client_user && auth_user->client_pass)
+            {
+                int len = strlen (auth_user->client_user) + strlen (auth_user->client_pass) + 2;
+                userpwd = malloc (len);
+                snprintf (userpwd, len, "%s:%s", auth_user->client_user, auth_user->client_pass);
+                curl_easy_setopt (atd->curl, CURLOPT_USERPWD, userpwd);
+            }
+            else
+                curl_easy_setopt (atd->curl, CURLOPT_USERPWD, "");
+        }
+    }
+    else
+    {
+        /* url has user/pass but libcurl may need to clear any existing settings */
+        curl_easy_setopt (atd->curl, CURLOPT_USERPWD, "");
+    }
+    curl_easy_setopt (atd->curl, CURLOPT_URL, url->listener_remove_sc.url);
+    curl_easy_setopt (atd->curl, CURLOPT_POSTFIELDS, rb->data);
+    curl_easy_setopt (atd->curl, CURLOPT_WRITEHEADER, auth_user);
+    curl_easy_setopt (atd->curl, CURLOPT_WRITEDATA, auth_user);
+    curl_easy_setopt (atd->curl, CURLOPT_TIMEOUT, (long)url->listener_remove_sc.timeout);
+    char msg [120];
+    snprintf (msg, sizeof msg, ", listener remove %s, client %" PRI_ConnID ", handler %d",
+            auth_user->client_ip ? auth_user->client_ip : "-", auth_user->client_id, auth_user->handler);
+#if LIBCURL_VERSION_NUM >= 0x072000
+    curl_easy_setopt (atd->curl, CURLOPT_XFERINFODATA, msg);
+#endif
+
+    DEBUG3 ("...handler %d (%s) sending request (client %" PRI_ConnID ")", auth_user->handler, auth_user->mount, auth_user->client_id);
+    if (do_curl_perform (atd->curl, auth_user, "listener remove"))
+    {
+        thread_mutex_lock (&url->updating);
+        if (url->listener_remove_sc.stop_until == 0)
+            url->listener_remove_sc.stop_until = time (NULL) + url->listener_remove_sc.stop_duration;
+        thread_mutex_unlock (&url->updating);
+        WARN4 ("auth on %s failed with \"%s\"%s, stop %ds", auth_user->mount, atd->errormsg, msg, url->listener_remove_sc.stop_duration);
+    }
+    else
+        DEBUG3 ("...handler %d (%s) request complete (client %" PRI_ConnID ")", auth_user->handler, auth_user->mount, auth_user->client_id);
 
     free (userpwd);
     refbuf_release (rb);
@@ -899,6 +996,8 @@ int auth_get_url_auth (auth_t *authenticator, config_options_t *options)
             INFO1 ("listener add set to %s", url_info->listener_add.url);
         if (url_info->listener_remove.url)
             INFO1 ("listener remove set to %s", url_info->listener_remove.url);
+        if (url_info->listener_remove_sc.url)
+            INFO1 ("listener remove sc set to %s", url_info->listener_remove_sc.url);
         if (url_info->mount_add.url)
             INFO1 ("mount add set to %s", url_info->mount_add.url);
         if (url_info->mount_remove.url)
@@ -961,6 +1060,12 @@ int auth_get_url_auth (auth_t *authenticator, config_options_t *options)
             authenticator->release_listener = url_remove_listener;
             clear_url_settings (&url_info->listener_remove);
             url_info->listener_remove.url = options->value;
+        }
+        if(!strcmp(options->name, "listener_remove_sc"))
+        {
+            authenticator->release_listener = url_remove_listener_sc;
+            clear_url_settings (&url_info->listener_remove_sc);
+            url_info->listener_remove_sc.url = options->value;
         }
         if(!strcmp(options->name, "mount_add"))
         {
@@ -1048,6 +1153,9 @@ int auth_get_url_auth (auth_t *authenticator, config_options_t *options)
 
     req_templ.url = url_info->listener_remove.url ? strdup (url_info->listener_remove.url) : NULL;
     url_info->listener_remove = req_templ;
+
+    req_templ.url = url_info->listener_remove_sc.url ? strdup (url_info->listener_remove_sc.url) : NULL;
+    url_info->listener_remove_sc = req_templ;
 
     req_templ.url = url_info->mount_add.url ? strdup (url_info->mount_add.url) : NULL;
     url_info->mount_add = req_templ;

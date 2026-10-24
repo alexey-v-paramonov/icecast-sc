@@ -262,6 +262,11 @@ static void auth_client_free (auth_client *auth_user)
     }
     free (auth_user->hostname);
     free (auth_user->mount);
+    free (auth_user->client_ip);
+    free (auth_user->client_agent);
+    free (auth_user->client_user);
+    free (auth_user->client_pass);
+    free (auth_user->client_mount);
     free (auth_user);
 }
 
@@ -419,15 +424,22 @@ static void *auth_run_thread (void *arg)
             auth_user->thread_data = handler->data;
             auth_user->handler = id;
 
-            if (auth_user->client && (auth_user->client->flags & CLIENT_AUTH_PENDING))
+            if (auth_user->client)
             {
-                int loop = 1000;
-                while (auth_user->client->worker && loop--)
+                int client_pending;
+                thread_rwlock_rlock (&workers_lock);
+                client_pending = (auth_user->client->flags & CLIENT_AUTH_PENDING) != 0;
+                thread_rwlock_unlock (&workers_lock);
+                while (client_pending)
+                {
+                    int attached;
+                    thread_rwlock_rlock (&workers_lock);
+                    attached = auth_user->client->worker != NULL;
+                    thread_rwlock_unlock (&workers_lock);
+                    if (!attached)
+                        break;
                     thread_sleep (1000);
-                if (auth_user->client->worker)
-                    WARN1 ("auth client %" PRIu64 " still attached to worker after handoff wait", CONN_ID(auth_user->client));
-                else
-                    auth_user->client->flags &= ~CLIENT_AUTH_PENDING;
+                }
             }
 
             if (auth_user->process)
@@ -808,6 +820,17 @@ int auth_release_listener (client_t *client, const char *mount, mount_proxy *mou
         if (mount && mountinfo && mountinfo->auth && mountinfo->auth->release_listener)
         {
             auth_client *auth_user = auth_client_setup (mount, client);
+            const char *agent = client->parser ? httpp_getvar (client->parser, "user-agent") : NULL;
+            const char *mountreq = client->parser ? httpp_getvar (client->parser, HTTPP_VAR_RAWURI) : NULL;
+            if (mountreq == NULL && client->parser)
+                mountreq = httpp_getvar (client->parser, HTTPP_VAR_URI);
+            auth_user->client_id = client->connection.id;
+            auth_user->connect_time = client->connection.con_time;
+            auth_user->client_ip = strdup (client->connection.ip ? client->connection.ip : "");
+            auth_user->client_agent = strdup (agent ? agent : "-");
+            auth_user->client_user = client->username ? strdup (client->username) : NULL;
+            auth_user->client_pass = client->password ? strdup (client->password) : NULL;
+            auth_user->client_mount = strdup (mountreq ? mountreq : mount);
             client->ops = &auth_release_ops;
             client->connection.discon.time = time (NULL);
             auth_user->process = auth_remove_listener;

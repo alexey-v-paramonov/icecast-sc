@@ -1565,8 +1565,10 @@ static void *connection_thread (void *arg)
             client->connection.con_time = client->schedule_ms/1000;
             client->connection.discon.time = client->connection.con_time + header_timeout;
             client->schedule_ms += 9;
-            client_add_incoming (client);
-            stats_event_inc (NULL, "connections");
+            if (client_add_incoming (client) < 0)
+                client_destroy (client);
+            else
+                stats_event_inc (NULL, "connections");
         }
         if (global.new_connections_slowdown)
             thread_sleep (global.new_connections_slowdown * 5000);

@@ -127,6 +127,7 @@ static stats_source_t *_find_source(avl_tree *tree, const char *source);
 static void process_event (stats_event_t *event);
 static void _add_stats_to_stats_client (client_t *client, const char *fmt, va_list ap);
 static void stats_listener_send (int flags, const char *fmt, ...);
+static void stats_client_release (client_t *client);
 
 unsigned int throttle_sends;
 
@@ -1080,7 +1081,8 @@ static void _register_listener (client_t *client)
     listener->recent_block = last;
     thread_mutex_unlock (&_stats.listeners_lock);
 
-    client_add_incoming (client);
+    if (client_add_incoming (client) < 0)
+        stats_client_release (client);
 }
 
 

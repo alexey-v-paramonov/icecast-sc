@@ -681,7 +681,8 @@ static void *start_relay_stream (void *arg)
     relays_connecting--;
     thread_mutex_unlock (&relay_start_lock);
 
-    client_add_incoming (client);
+    if (client_add_incoming (client) < 0)
+        relay_release (client);
     return NULL;
 }
 

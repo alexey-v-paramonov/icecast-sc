@@ -1036,7 +1036,11 @@ int fserve_setup_client_fb (client_t *client, fbinfo *finfo)
     client->flags |= CLIENT_IN_FSERVE;
 
     client->flags &= ~CLIENT_HAS_INTRO_CONTENT;
-    client_add_incoming (client);
+    if (client_add_incoming (client) < 0)
+    {
+        file_release (client);
+        return 0;
+    }
 
     return 0;
 }

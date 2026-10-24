@@ -2875,7 +2875,16 @@ int source_add_listener (const char *mount, mount_proxy *mountinfo, client_t *cl
     source_setup_listener (source, client);
     source->listeners++;
 
-    if (client_add_incoming (client) == 0 && source_running (source))
+    int added = client_add_incoming (client);
+    if (added < 0)
+    {
+        int release_ret = source_listener_release (source, client);
+        thread_rwlock_unlock (&source->lock);
+        if (release_ret < 0)
+            client_destroy (client);
+        return -1;
+    }
+    if (added == 0 && source_running (source))
         do_process = 1;
     thread_rwlock_unlock (&source->lock);
     global_reduce_bitrate_sampling (global.out_bitrate);
@@ -3022,7 +3031,13 @@ int source_startup (client_t *client, const char *uri)
     client->aux_data = (uintptr_t)strdup(uri);
     client->ops = &source_client_start_ops;
 
-    client_add_incoming (client);
+    if (client_add_incoming (client) < 0)
+    {
+        free ((void*)client->aux_data);
+        client->aux_data = 0;
+        client_destroy (client);
+        return -1;
+    }
     return 0;
 }
 

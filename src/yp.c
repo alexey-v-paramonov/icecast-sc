@@ -269,7 +269,8 @@ static void yp_client_add (ice_config_t *config)
     ypclient.counter = 0;
     ypclient.connection.error = 0;
     ypclient.flags = CLIENT_ACTIVE|CLIENT_SKIP_ACCESSLOG;
-    client_add_incoming (&ypclient);
+    if (client_add_incoming (&ypclient) < 0)
+        ypclient.flags = 0;
 }
 
 
@@ -861,8 +862,8 @@ static void *yp_update_thread(void *arg)
     }
     thread_rwlock_unlock (&yp_lock);
 
-    if (global_state() == ICE_RUNNING)
-        client_add_incoming (&ypclient);
+    if (global_state() == ICE_RUNNING && client_add_incoming (&ypclient) < 0)
+        ypclient.flags = 0;
     // DEBUG0("YP thread shutdown");
     return NULL;
 }

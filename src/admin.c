@@ -283,8 +283,14 @@ int admin_mount_request (client_t *client)
     const char *mount = client->mount;
 
     client->ops = &admin_mount_ops;
-    if (client_add_incoming (client))   // if add to worker, run from there
+    int added = client_add_incoming (client);
+    if (added > 0)
         return 0;
+    if (added < 0)
+    {
+        admin_client_destroy (client);
+        return -1;
+    }
     if ((client->flags & CLIENT_AUTHENTICATED) == 0)
     {
         WARN1 ("Failed auth for source \"%s\"", client->mount);

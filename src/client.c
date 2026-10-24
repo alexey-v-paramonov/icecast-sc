@@ -161,7 +161,8 @@ void client_destroy(client_t *client)
     client->refbuf = NULL;
     client->pos = 0;
     client->intro_offset = 0;
-    client_add_incoming (client);
+    if (client_add_incoming (client) < 0)
+        client_destroy (client);
 }
 
 
@@ -531,6 +532,11 @@ int client_add_incoming (client_t *client)
     client->schedule_ms = 0;
     thread_rwlock_rlock (&workers_lock);
     handler = worker_incoming;
+    if (handler == NULL)
+    {
+        thread_rwlock_unlock (&workers_lock);
+        return -1;
+    }
     thread_mutex_lock (&handler->lock);
 
     worker_add_client (handler, client);
@@ -892,10 +898,15 @@ void *worker (void *arg)
                 worker_removed_client (&wc, nxc);
                 if (auth_pending)
                 {
-                    client->worker = NULL;
+                    thread_mutex_unlock (&worker->lock);
+#ifdef AUTH_HANDOFF_TEST_DELAY
+                    thread_sleep (AUTH_HANDOFF_TEST_DELAY);
+#endif
+                    thread_rwlock_wlock (&workers_lock);
                     client->flags &= ~CLIENT_AUTH_PENDING;
-                    if (client->connection.error)
-                        client_destroy (client);
+                    client->worker = NULL;
+                    thread_rwlock_unlock (&workers_lock);
+                    thread_mutex_lock (&worker->lock);
                 }
                 continue;
             }
