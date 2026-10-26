@@ -52,6 +52,13 @@ typedef struct auth_client_tag
     char        *client_user;
     char        *client_pass;
     char        *client_mount;
+    char        *intro_token;
+    long long    intro_bytes;
+    char        *intro_result;
+    long long    intro_end_ms;
+    long long    intro_elapsed_ms;
+    unsigned char has_intro_end;
+    unsigned char has_intro_elapsed;
     struct auth_tag *auth;
     void        *thread_data;
     void        (*process)(struct auth_client_tag *auth_user);

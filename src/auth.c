@@ -267,6 +267,8 @@ static void auth_client_free (auth_client *auth_user)
     free (auth_user->client_user);
     free (auth_user->client_pass);
     free (auth_user->client_mount);
+    free (auth_user->intro_token);
+    free (auth_user->intro_result);
     free (auth_user);
 }
 
@@ -831,6 +833,19 @@ int auth_release_listener (client_t *client, const char *mount, mount_proxy *mou
             auth_user->client_user = client->username ? strdup (client->username) : NULL;
             auth_user->client_pass = client->password ? strdup (client->password) : NULL;
             auth_user->client_mount = strdup (mountreq ? mountreq : mount);
+            auth_user->intro_token = strdup (client->intro_token ? client->intro_token : "");
+            auth_user->intro_bytes = (long long) client->intro_bytes;
+            auth_user->intro_result = strdup (client_intro_result (client));
+            auth_user->intro_end_ms = (long long) client->intro_end_ms;
+            auth_user->has_intro_end = client->intro_shared || client->intro_end_ms > 0;
+            if (client->intro_started)
+            {
+                uint64_t now = client->worker ? client->worker->time_ms
+                                              : (uint64_t) time (NULL) * 1000;
+                auth_user->intro_elapsed_ms = now > client->intro_start_ms
+                    ? (long long) (now - client->intro_start_ms) : 0;
+                auth_user->has_intro_elapsed = 1;
+            }
             client->ops = &auth_release_ops;
             client->connection.discon.time = time (NULL);
             auth_user->process = auth_remove_listener;
@@ -968,6 +983,7 @@ void auth_stream_start (mount_proxy *mountinfo, source_t *source)
         // use a blank client copy to avoid a race as slower callbacks could occur
         // after a short lived source.
         auth_user->client = calloc (1, sizeof (client_t));
+        auth_user->client->intro_fd = -1;
         auth_user->client->connection.ip = strdup (client->connection.ip);
         if (agent)
             auth_user->client->shared_data = strdup (agent);
@@ -992,6 +1008,7 @@ void auth_stream_end (mount_proxy *mountinfo, source_t *source)
 
         // use a blank client copy to avoid a race
         auth_user->client = calloc (1, sizeof (client_t));
+        auth_user->client->intro_fd = -1;
         auth_user->client->connection.ip = strdup (client->connection.ip);
         if (agent)
             auth_user->client->shared_data = strdup (agent);

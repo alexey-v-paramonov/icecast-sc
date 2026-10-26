@@ -476,6 +476,7 @@ int connection_send_ssl (connection_t *con, const void *buf, size_t len)
             // DEBUG3("syscall error %d, on %s (%" PRIu64 ")", sock_error(), &con->ip[0], con->id);
         case SSL_ERROR_SSL:
             con->flags |= CONN_FLG_SSL;
+            con->write_error = 1;
             // fallthru
         case SSL_ERROR_ZERO_RETURN:
             con->error = 1;
@@ -545,7 +546,10 @@ int connection_send (connection_t *con, const void *buf, size_t len)
     if (bytes < 0)
     {
         if (!sock_recoverable (sock_error()))
+        {
             con->error = 1;
+            con->write_error = 1;
+        }
     }
     else
     {
@@ -651,7 +655,10 @@ int connection_bufs_send (connection_t *con, struct connection_bufs *vectors, in
                 return -1;
             ret = sock_writev (con->sock, p, vectors->count - i);
             if (ret < 0 && !sock_recoverable (sock_error()))
+            {
                 con->error = 1;
+                con->write_error = 1;
+            }
         }
 #ifdef HAVE_OPENSSL
         else
@@ -1157,6 +1164,7 @@ static client_t *accept_client (void)
                 free (client);
                 break;
             }
+            client->intro_fd = -1;
 
             client->shared_data = r = refbuf_new (PER_CLIENT_REFBUF_SIZE);
             r->len = 0; // for building up the request coming in
@@ -1563,6 +1571,7 @@ static void *connection_thread (void *arg)
              * getting a connect. */
             client->counter = client->schedule_ms = timing_get_time();
             client->connection.con_time = client->schedule_ms/1000;
+            client->connection.con_time_ms = client->schedule_ms;
             client->connection.discon.time = client->connection.con_time + header_timeout;
             client->schedule_ms += 9;
             if (client_add_incoming (client) < 0)
@@ -2101,10 +2110,12 @@ int connection_reset (connection_t *con, uint64_t time_ms)
         return -1;
     }
     con->con_time = time_ms/1000;
+    con->con_time_ms = time_ms;
     con->discon.time = con->con_time + header_timeout;
     con->discon.sent = 0;
     con->sent_bytes = 0;
     con->error = 0;
+    con->write_error = 0;
     con->flags = 0;
 #ifdef HAVE_OPENSSL
     if (con->ssl) { SSL_shutdown (con->ssl); SSL_free (con->ssl); con->ssl = NULL; }

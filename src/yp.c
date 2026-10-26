@@ -265,6 +265,7 @@ static void yp_client_add (ice_config_t *config)
     if (config->num_yp_directories == 0 || active_yps || global_state() != ICE_RUNNING)
         return;
     INFO0 ("Starting Directory client for YP processing");
+    ypclient.intro_fd = -1;
     ypclient.ops = &directory_client_ops;
     ypclient.counter = 0;
     ypclient.connection.error = 0;

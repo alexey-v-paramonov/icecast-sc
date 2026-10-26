@@ -124,6 +124,7 @@ void client_destroy(client_t *client)
     if (client->free_client_data)
         client->free_client_data (client);
 
+    client_intro_reset (client);
     free(client->username);
     free(client->password);
     client->username = NULL;
@@ -160,7 +161,7 @@ void client_destroy(client_t *client)
     client->shared_data = NULL;
     client->refbuf = NULL;
     client->pos = 0;
-    client->intro_offset = 0;
+    client_intro_reset (client);
     if (client_add_incoming (client) < 0)
         client_destroy (client);
 }
@@ -174,6 +175,97 @@ int client_compare (void *compare_arg, void *a, void *b)
     if (ca->connection.id > cb->connection.id) return 1;
 
     return 0;
+}
+
+
+void client_intro_reset (client_t *client)
+{
+    if (client->intro_fd >= 0)
+        file_close (&client->intro_fd);
+    client->intro_fd = -1;
+    free (client->intro_token);
+    client->intro_token = NULL;
+    client->intro_size = 0;
+    client->intro_start_ms = 0;
+    client->intro_end_ms = 0;
+    client->intro_bytes = 0;
+    client->intro_active = 0;
+    client->intro_joined = 0;
+    client->intro_complete = 0;
+    client->intro_shared = 0;
+    client->intro_started = 0;
+    client->intro_error = 0;
+    client->intro_offset = 0;
+}
+
+
+void client_intro_begin (client_t *client, icefile_handle fd, const char *token,
+                         off_t size)
+{
+    client_intro_reset (client);
+    client->intro_fd = fd;
+    client->intro_token = token ? strdup (token) : NULL;
+    client->intro_size = size;
+    client->intro_active = 1;
+}
+
+
+void client_intro_written (client_t *client, int bytes)
+{
+    uint64_t now;
+
+    if (bytes < 0)
+    {
+        if (client->intro_active && client->connection.write_error)
+            client->intro_error = 1;
+        return;
+    }
+    if (bytes == 0)
+        return;
+    now = client->worker ? client->worker->time_ms : timing_get_time ();
+    if (client->intro_active)
+    {
+        if (!client->intro_started)
+        {
+            client->intro_start_ms = now;
+            client->intro_started = 1;
+        }
+        client->intro_bytes += (uint64_t) bytes;
+    }
+    else if (client->intro_joined)
+    {
+        uint64_t connect_ms = client->connection.con_time_ms;
+        client->intro_end_ms = now > connect_ms ? now - connect_ms : 0;
+        client->intro_shared = 1;
+        client->intro_joined = 0;
+    }
+}
+
+
+void client_intro_eof (client_t *client)
+{
+    if (client->intro_active)
+    {
+        client->intro_active = 0;
+        client->intro_joined = 1;
+        if (client->intro_error == 0 && client->intro_size > 0 &&
+                client->intro_bytes >= (uint64_t) client->intro_size)
+            client->intro_complete = 1;
+        if (client->intro_fd >= 0)
+            file_close (&client->intro_fd);
+    }
+}
+
+
+const char *client_intro_result (client_t *client)
+{
+    if (client->intro_error)
+        return "error";
+    if (!client->intro_started || client->intro_bytes == 0)
+        return "none";
+    if (client->intro_complete)
+        return "complete";
+    return "partial";
 }
 
 

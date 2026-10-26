@@ -608,6 +608,7 @@ static int send_icy_metadata (client_t *client, refbuf_t *refbuf)
 
     ret = connection_bufs_send (&client->connection, &bufs, 0);
     connection_bufs_release (&bufs);
+    client_intro_written (client, ret < 0 ? ret : (ret > meta_len ? ret - meta_len : 0));
 
     if (ret >= meta_len)
     {
@@ -659,7 +660,7 @@ static int format_mp3_write_buf_to_client (client_t *client)
 
         if (client->flags & CLIENT_CHUNKED)
         {
-            int overall;
+            int overall, payload, old_pos = client->connection.chunk_pos;
             char chunk_hdr [CHUNK_HDR_SZ];
             struct connection_bufs bufs;
 
@@ -676,6 +677,16 @@ static int format_mp3_write_buf_to_client (client_t *client)
                 client->connection.chunk_pos += ret;
                 if (client->connection.chunk_pos > bufs.total) abort();
             }
+            if (ret < 0)
+                client_intro_written (client, ret);
+            else
+            {
+                int start = overall - len - 2, done = old_pos + ret;
+                int from = old_pos < start ? start : old_pos;
+                int to = done > overall - 2 ? overall - 2 : done;
+                payload = to > from ? to - from : 0;
+                client_intro_written (client, payload);
+            }
             if (client->connection.chunk_pos == overall)
             {
                 client->connection.chunk_pos = 0;
@@ -686,7 +697,10 @@ static int format_mp3_write_buf_to_client (client_t *client)
             connection_bufs_release (&bufs);
         }
         else
+        {
             ret = client_send_bytes (client, buf, len);
+            client_intro_written (client, ret);
+        }
 
         if (ret > 0)
         {
@@ -731,6 +745,15 @@ static int send_iceblock_to_client (client_t *client)
     lengthbytes[1] = (refbuf->len+2) & 0xFF;
     ret = connection_bufs_send (&client->connection, &v, client_mpg->metadata_offset);
     connection_bufs_release (&v);
+    if (ret < 0)
+        client_intro_written (client, ret);
+    else
+    {
+        int start = client_mpg->metadata_offset, done = start + ret;
+        int from = start > skip ? start : skip;
+        int to = done < len ? done : len;
+        client_intro_written (client, to > from ? to - from : 0);
+    }
 
     if (ret > 0)
     {

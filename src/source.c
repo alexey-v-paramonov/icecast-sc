@@ -27,6 +27,7 @@
 #include <string.h>
 #include <limits.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <ogg/ogg.h>
 #include <errno.h>
 
@@ -323,6 +324,9 @@ void source_clear_source (source_t *source)
 
     free (source->intro_filename);
     source->intro_filename = NULL;
+    free (source->intro_token);
+    source->intro_token = NULL;
+    source->intro_size = 0;
     file_close (&source->intro_file);
     log_close (source->preroll_log_id);
     source->preroll_log_id = -1;
@@ -1157,11 +1161,18 @@ static int http_source_introfile (client_t *client)
     int assumed = 0;
 
     //DEBUG2 ("client intro_pos is %ld, sent bytes is %ld", client->intro_offset, client->connection.sent_bytes);
-    if (format_file_read (client, source->format, source->intro_file) < 0)
+    icefile_handle intro_fd = source->intro_file;
+    if (client->intro_active)
+        intro_fd = client->intro_fd;
+    int intro_read = format_file_read (client, source->format, intro_fd);
+    if (intro_read < 0)
     {
         source_preroll_logging (source, client);
         if (source->stream_data_tail)
         {
+            if (client->intro_active && intro_read == -2)
+                client->intro_error = 1;
+            client_intro_eof (client);
             if (source->intro_skip_replay)
                 listener_skips_intro (source->intro_ipcache, client, source->intro_skip_replay);
             /* better find the right place in queue for this client */
@@ -1242,6 +1253,22 @@ static int http_source_intro (client_t *client)
     refbuf_release (client->refbuf);
     client->refbuf = n;
     client->pos = 0;
+    if (source->intro_file >= 0)
+    {
+        int fd = dup (source->intro_file);
+        client_intro_begin (client, fd, source->intro_token, source->intro_size);
+        if (fd < 0)
+        {
+            WARN2 ("cannot pin intro for %s (%s)", source->mount, strerror (errno));
+            client->intro_error = 1;
+            client->intro_active = 0;
+            client->intro_joined = 1;
+            client->intro_offset = -1;
+            client_set_queue (client, NULL);
+            client->check_buffer = source_queue_advance;
+            return source_queue_advance (client);
+        }
+    }
     client->intro_offset = source->intro_start;
     client->check_buffer = http_source_introfile;
     return http_source_introfile (client);
@@ -1787,6 +1814,26 @@ void source_set_fallback (source_t *source, fbinfo *fallback)
 }
 
 
+static void intro_token_from_path (const char *path, char *token, size_t len)
+{
+    const char *base = strrchr (path, '/');
+    const char *end;
+    const char *underscore;
+
+    token[0] = '\0';
+    base = base ? base + 1 : path;
+    end = strrchr (base, '.');
+    if (end == NULL)
+        end = base + strlen (base);
+    underscore = end;
+    while (underscore > base && underscore[-1] != '_')
+        underscore--;
+    if (underscore == base || underscore >= end)
+        return;
+    snprintf (token, len, "%.*s", (int) (end - underscore), underscore);
+}
+
+
 int source_set_intro (source_t *source, ice_config_t *_c, const char *file_pattern)
 {
     if (file_pattern == NULL || source == NULL)
@@ -1807,12 +1854,23 @@ int source_set_intro (source_t *source, ice_config_t *_c, const char *file_patte
         if (util_expand_pattern (source->mount, file_pattern, buffer + ret, &len) < 0)
             break;
 
+        char relative[4096];
+        char resolved[PATH_MAX];
+        char token[128];
+        snprintf (relative, sizeof relative, "%s", buffer + ret);
+        if (realpath (buffer, resolved) != NULL)
+            snprintf (buffer, sizeof buffer, "%s", resolved);
+        intro_token_from_path (buffer, token, sizeof token);
+
         icefile_handle intro_file;
         if (file_open (&intro_file, buffer) < 0)
         {
             WARN3 ("Cannot open intro for %s \"%s\": %s", source->mount, buffer, strerror(errno));
             break;
         }
+        struct stat intro_stat;
+        if (fstat (intro_file, &intro_stat) < 0)
+            intro_stat.st_size = 0;
         format_check_t intro;
         intro.fd = intro_file;
         intro.desc = buffer;
@@ -1832,8 +1890,13 @@ int source_set_intro (source_t *source, ice_config_t *_c, const char *file_patte
         INFO3 ("intro file for %s is %s (%s)", source->mount, file_pattern, buffer);
         file_close (&source->intro_file);
         source->intro_file = intro_file;
+        source->intro_size = intro_stat.st_size;
         free (source->intro_filename);
-        source->intro_filename = strdup (buffer + ret);
+        source->intro_filename = strdup (relative);
+        free (source->intro_token);
+        source->intro_token = strdup (token);
+        INFO3 ("intro token for %s is \"%s\" (%lld bytes)", source->mount,
+                source->intro_token, (long long) source->intro_size);
         return 0;
     } while (0);
     return -1;
@@ -2190,6 +2253,9 @@ static void source_apply_mount (source_t *source, ice_config_t *config, mount_pr
     file_close (&source->intro_file);
     free (source->intro_filename);
     source->intro_filename = NULL;
+    free (source->intro_token);
+    source->intro_token = NULL;
+    source->intro_size = 0;
     cached_prune (source->intro_ipcache);
     free (source->intro_ipcache);
     source->intro_ipcache = NULL;

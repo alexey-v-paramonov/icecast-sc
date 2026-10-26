@@ -772,6 +772,7 @@ static int relay_installed (relay_server *relay)
 {
     client_t *client = calloc (1, sizeof (client_t));
 
+    client->intro_fd = -1;
     connection_init (&client->connection, SOCK_ERROR, NULL);
     global_lock();
     client_register (client);
@@ -1592,6 +1593,7 @@ int relay_source_reactivated (source_t *source)
         return 0;
 
     relayclient = calloc (1, sizeof (client_t));
+    relayclient->intro_fd = -1;
     connection_init (&relayclient->connection, SOCK_ERROR, NULL);
     global_lock();
     if (global.running == ICE_RUNNING)
@@ -1683,6 +1685,7 @@ static void *relay_switch (void *arg)
     int remain = sizeof msg - n;
 
     client_t *client = calloc (1, sizeof (client_t));
+    client->intro_fd = -1;
     connection_init (&client->connection, SOCK_ERROR, NULL);
 
     do

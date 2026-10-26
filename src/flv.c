@@ -206,6 +206,45 @@ static int flv_aac_firsthdr (struct mpeg_sync *mp, sync_callback_t *cb, unsigned
 }
 
 
+static int flv_aac_header_len (refbuf_t *ref, unsigned char *frame)
+{
+    int off = frame - (unsigned char *)ref->data;
+
+    if (off >= 7 && frame[-7] == 0xFF && (frame[-6] & 0xF6) == 0xF0 && (frame[-6] & 1))
+        return 7;
+    if (off >= 9 && frame[-9] == 0xFF && (frame[-8] & 0xF6) == 0xF0 && (frame[-8] & 1) == 0)
+        return 9;
+    return 0;
+}
+
+static int flv_intro_payload (struct flv *flv, int start, int bytes)
+{
+    refbuf_t *ref = flv->client->refbuf;
+    unsigned char *data = (unsigned char *)ref->data;
+    int pos = 0, end = start + bytes, payload = 0;
+    int i;
+
+    for (i = 0; i < flv->bufs.count; i++)
+    {
+        unsigned char *base = (unsigned char *)IO_VECTOR_BASE (&flv->bufs.block[i]);
+        unsigned int len = IO_VECTOR_LEN (&flv->bufs.block[i]);
+        int low = pos, high = pos + len;
+        int from, to;
+
+        pos = high;
+        if (base < data || base >= data + ref->len)
+            continue;
+        from = start > low ? start : low;
+        to = end < high ? end : high;
+        if (to <= from)
+            continue;
+        payload += to - from;
+        if ((flv->flags & FLV_AAC) && to == high)
+            payload += flv_aac_header_len (ref, base);
+    }
+    return payload;
+}
+
 static int send_flv_buffer (client_t *client, struct flv *flv)
 {
     int ret = 0;
@@ -213,11 +252,18 @@ static int send_flv_buffer (client_t *client, struct flv *flv)
 
     if (len > 0)
     {
+        unsigned int start = flv->block_pos;
         ret = connection_bufs_send (&client->connection, &flv->bufs, flv->block_pos);
         if (ret < (int)len)
             client->schedule_ms += 10 + (client->throttle * ((ret < 0) ? 10 : 6));
         if (ret > 0)
+        {
             flv->block_pos += ret;
+            if (client->intro_active || client->intro_joined)
+                client_intro_written (client, flv_intro_payload (flv, start, ret));
+        }
+        else if (ret < 0)
+            client_intro_written (client, ret);
     }
     if (flv->block_pos == flv->bufs.total)
     {
@@ -569,6 +615,7 @@ int flv_create_client_data (format_plugin_t *plugin, ice_http_t *http, client_t 
     flv->tag[4] = 8;    // Audio details only
     if (plugin->type == FORMAT_TYPE_AAC)
     {
+        flv->flags |= FLV_AAC;
         flv->cb.frame_callback = flv_aac_firsthdr;
     }
     if (plugin->type == FORMAT_TYPE_MPEG)

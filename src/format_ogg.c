@@ -639,6 +639,7 @@ static int write_buf_to_client (client_t *client)
                 break;
         }
         ret = client_send_bytes (client, buf, len);
+        client_intro_written (client, ret);
 
         if (ret > 0)
         {

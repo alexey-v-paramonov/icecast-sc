@@ -536,6 +536,17 @@ static auth_result url_remove_listener_sc (auth_client *auth_user)
     ice_params_printf (&post, "ip",     0,              "%s", auth_user->client_ip ? auth_user->client_ip : "");
     ice_params_printf (&post, "agent",  0,              "%s", auth_user->client_agent ? auth_user->client_agent : "-");
     ice_params_printf (&post, "duration", PARAM_AS,     "%" PRIu64, duration);
+    ice_params_printf (&post, "intro_token", 0,         "%s", auth_user->intro_token ? auth_user->intro_token : "");
+    ice_params_printf (&post, "intro_bytes", PARAM_AS,  "%lld", auth_user->intro_bytes);
+    ice_params_printf (&post, "intro_result", 0,        "%s", auth_user->intro_result ? auth_user->intro_result : "none");
+    if (auth_user->has_intro_end)
+        ice_params_printf (&post, "intro_end_ms", PARAM_AS, "%lld", auth_user->intro_end_ms);
+    else
+        ice_params_printf (&post, "intro_end_ms", 0, "%s", "");
+    if (auth_user->has_intro_elapsed)
+        ice_params_printf (&post, "intro_elapsed_ms", PARAM_AS, "%lld", auth_user->intro_elapsed_ms);
+    else
+        ice_params_printf (&post, "intro_elapsed_ms", 0, "%s", "");
     refbuf_t *rb = ice_params_complete (&post);
     if (rb == NULL) return AUTH_FAILED;
 

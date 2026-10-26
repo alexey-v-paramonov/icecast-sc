@@ -101,6 +101,19 @@ struct _client_tag
     /* is client getting intro data */
     off_t intro_offset;
 
+    icefile_handle intro_fd;
+    char *intro_token;
+    off_t intro_size;
+    uint64_t intro_start_ms;
+    uint64_t intro_end_ms;
+    uint64_t intro_bytes;
+    unsigned char intro_active;
+    unsigned char intro_joined;
+    unsigned char intro_complete;
+    unsigned char intro_shared;
+    unsigned char intro_started;
+    unsigned char intro_error;
+
     /* where in the queue the client is */
     refbuf_t *refbuf;
 
@@ -136,6 +149,12 @@ int  client_send_m3u (client_t *client, const char *path);
 
 void client_register (client_t *client);
 void client_destroy(client_t *client);
+void client_intro_reset(client_t *client);
+void client_intro_begin(client_t *client, icefile_handle fd, const char *token,
+                        off_t size);
+void client_intro_written(client_t *client, int bytes);
+void client_intro_eof(client_t *client);
+const char *client_intro_result(client_t *client);
 int  client_send_options(client_t *client);
 int  client_send_501(client_t *client);
 int  client_send_416(client_t *client);

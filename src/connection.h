@@ -40,6 +40,7 @@ struct connection_tag
     uint64_t id;
 
     time_t con_time;
+    uint64_t con_time_ms;
     struct {
         time_t      time;
         uint64_t    sent;
@@ -50,6 +51,7 @@ struct connection_tag
     sock_t sock;
     unsigned int chunk_pos; // for short writes on chunk size line
     char error;
+    char write_error;
     unsigned char readchk;
     unsigned char flags;
 

@@ -272,6 +272,7 @@ int format_generic_write_to_client (client_t *client)
     unsigned int len = refbuf->len - client->pos;
 
     ret = client_send_bytes (client, buf, len);
+    client_intro_written (client, ret);
 
     if (ret > 0)
     {

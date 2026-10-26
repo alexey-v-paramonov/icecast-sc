@@ -40,7 +40,9 @@ typedef struct source_tag
 
     /* name of a file, whose contents are sent at listener connection */
     char *intro_filename;
+    char *intro_token;
     icefile_handle intro_file;
+    off_t intro_size;
     long intro_start;
     int preroll_log_id;
 
