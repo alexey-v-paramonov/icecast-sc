@@ -599,6 +599,8 @@ ENDOFM4
     fi
     ./configure \
         --prefix="${DEPS_PREFIX}" \
+        --enable-static \
+        --disable-shared \
         CPPFLAGS="-I${DEPS_PREFIX}/include" \
         LDFLAGS="-L${DEPS_PREFIX}/lib" \
         LIBRHASH_CFLAGS="-I${DEPS_PREFIX}/include" \
@@ -649,11 +651,14 @@ echo "==> Building static Icecast binary..."
 # All transitive deps are built from source into DEPS_PREFIX.
 # -ldl   : libcrypto.a(dso_dlfcn.o) calls dlopen/dlsym for engine loading
 # -lcrypt: resolves to our built libxcrypt (self-contained, no NSS dep)
-EXTRA_LIBS="-lm -lz -llzma -lzstd -lcrypt -ldl"
+EXTRA_LIBS="-lz -llzma -lzstd -lcrypt"
+PKG_LIBS="$(pkg-config --libs igloo libxml-2.0 libxslt vorbis ogg speex theora libcurl openssl librhash libzstd 2>/dev/null)"
+STATIC_LIBS="$(echo "${PKG_LIBS}" | tr ' ' '\n' | grep -vE '^-l(pthread|dl|rt|m|c)$' | grep -v '^-pthread$' | tr '\n' ' ')"
+GLIBC_LIBS="-pthread -ldl -lrt -lm -lc"
 
 make all \
-    LDFLAGS="-all-static" \
-    LIBS="$(pkg-config --libs igloo libxml-2.0 libxslt vorbis ogg speex theora libcurl openssl librhash libzstd 2>/dev/null) -pthread ${EXTRA_LIBS}"
+    LDFLAGS="-static-libgcc -Wl,-Bstatic" \
+    LIBS="${STATIC_LIBS} ${EXTRA_LIBS} -Wl,-Bdynamic ${GLIBC_LIBS}"
 
 popd >/dev/null
 
