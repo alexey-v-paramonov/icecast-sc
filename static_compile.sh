@@ -1,18 +1,20 @@
 #!/bin/bash
-# static_compile.sh — Build a fully static icecast binary
+# static_compile.sh — Build an icecast binary with all dependencies static and glibc dynamic
 #
 # Supported build hosts:
 #   CentOS 7   (requires gcc-11 from devtoolset/SCL)
 #   Ubuntu 20.04 (requires gcc-11, e.g. from ubuntu-toolchain-r/test PPA)
 #   Ubuntu 22.04
 #   Ubuntu 24.04
+#   Ubuntu 26.04
 #
 # Usage:
 #   ./static_compile.sh [--jobs N] [--prefix /path]
 #
-# The script builds all dependencies from source into a private prefix so the
-# resulting binary carries no runtime shared-library requirements beyond the
-# glibc NSS stubs that are unavoidable on Linux (getaddrinfo, getpwnam, …).
+# The script builds all dependencies from source into a private prefix and links
+# them statically. glibc (libc, libpthread, libdl, librt, libm) stays dynamic so
+# NSS lookups (getpwnam, initgroups, getaddrinfo) use the host's own glibc; build
+# on the oldest glibc of each target and run the result only on that target.
 #
 # Key design decisions:
 #   • -march=x86-64  forces the baseline ISA so no AVX/AVX2 SIMD routines from
@@ -94,7 +96,7 @@ install_build_deps() {
                 zlib1g-dev liblzma-dev libzstd-dev \
                 python3 perl nasm gettext
             ;;
-        ubuntu22*|ubuntu24*)
+        ubuntu22*|ubuntu24*|ubuntu26*)
             apt-get update -qq
             apt-get install -y \
                 wget tar make autoconf automake libtool pkg-config \
@@ -671,7 +673,13 @@ strip "${OUTPUT_BINARY}"
 echo
 echo "==> Done. Static binary: ${OUTPUT_BINARY}"
 echo "    Size: $(du -sh "${OUTPUT_BINARY}" | cut -f1)"
-ldd "${OUTPUT_BINARY}" 2>&1 || true
+NEEDED_LIBS="$(readelf -d "${OUTPUT_BINARY}" | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p')"
+UNEXPECTED_LIBS="$(echo "${NEEDED_LIBS}" | grep -vE '^(libc|libpthread|libdl|librt|libm|libmvec)\.so\.[0-9]+$|^ld-linux-x86-64\.so\.2$' || true)"
+echo "    Needed: $(echo ${NEEDED_LIBS})"
+if [[ -n "${UNEXPECTED_LIBS}" ]]; then
+    echo "ERROR: unexpected shared libraries: $(echo ${UNEXPECTED_LIBS})" >&2
+    exit 1
+fi
 
 # ---------------------------------------------------------------------------
 # Restore autotools-generated files so the source tree stays clean.

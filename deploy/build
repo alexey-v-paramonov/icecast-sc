@@ -1,0 +1,47 @@
+#!/bin/bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+DOCKER_BUILD_DIR="${DOCKER_BUILD_DIR:-/home/lx/p/autodj/docker/build}"
+
+declare -A IMAGE=(
+    [centos7]=sc_centos7
+    [ubuntu20]=ubuntu_20.04
+    [ubuntu22]=ubuntu_22.04
+    [ubuntu24]=ubuntu_24.04
+    [ubuntu26]=ubuntu_26.04
+)
+TARGETS="${*:-centos7 ubuntu20 ubuntu22 ubuntu24 ubuntu26}"
+
+for target in ${TARGETS}; do
+    image="${IMAGE[$target]:-}"
+    if [ -z "${image}" ]; then
+        echo "Unknown target: ${target}" >&2
+        exit 1
+    fi
+    if ! docker image inspect "${image}:latest" >/dev/null 2>&1; then
+        echo "Docker image ${image} not found; build it with ${DOCKER_BUILD_DIR}/<image>/build" >&2
+        exit 1
+    fi
+
+    output="/root/icecast-sc/BIN/${target}/icecast-kh"
+    compile="cd /root/icecast-sc && ./static_compile.sh --prefix /root/kh-deps --output ${output}"
+    if [ "${target}" = "centos7" ]; then
+        compile="scl enable devtoolset-11 '${compile}'"
+    fi
+
+    echo "=== Building icecast-kh for ${target} (${image}) ==="
+    mkdir -p "${ROOT}/BIN/${target}" "${ROOT}/.build-deps/${target}"
+    rm -f "${ROOT}/BIN/${target}/icecast-kh"
+    docker run --rm \
+        -v "${ROOT}:/root/icecast-sc" \
+        -v "${ROOT}/.build-deps/${target}:/root/kh-deps" \
+        "${image}:latest" /bin/bash -c "${compile}"
+
+    sudo chown -R "$(id -un):$(id -gn)" "${ROOT}/BIN/${target}" "${ROOT}/.build-deps/${target}"
+    if [ ! -s "${ROOT}/BIN/${target}/icecast-kh" ]; then
+        echo "Missing artifact after ${target} build: BIN/${target}/icecast-kh" >&2
+        exit 1
+    fi
+    echo "=== ${target}: $(sha256sum "${ROOT}/BIN/${target}/icecast-kh" | cut -d' ' -f1) ==="
+done

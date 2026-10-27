@@ -1,0 +1,28 @@
+#!/bin/bash
+set -euo pipefail
+
+cd "$(dirname "$0")/../BIN"
+
+TARGETS="centos7 ubuntu20 ubuntu22 ubuntu24 ubuntu26"
+S02_KEY="${S02_KEY:-$HOME/.ssh/s02_admin_ed25519}"
+
+for target in ${TARGETS}; do
+    if [ ! -s "${target}/icecast-kh" ]; then
+        echo "Missing BIN/${target}/icecast-kh; run deploy/build first" >&2
+        exit 1
+    fi
+done
+
+echo "=== Installing on test servers ==="
+scp -i "${S02_KEY}" ubuntu22/icecast-kh root@s02.radio-tochka.com:/opt/icecast/bin/
+scp ubuntu24/icecast-kh root@62.109.29.241:/opt/icecast/bin/
+
+echo "=== Uploading to radio-tochka.com dist ==="
+for target in ${TARGETS}; do
+    scp "${target}/icecast-kh" "root@62.109.29.241:/var/www/radio-tochka.com/htdocs/dist/binaries/icecast/${target}/"
+done
+
+echo "=== Uploading to streaming.center dist ==="
+for target in ${TARGETS}; do
+    scp -i "${S02_KEY}" "${target}/icecast-kh" "root@streaming.center:/var/www/streaming.center/dist/binaries/icecast/${target}/"
+done
