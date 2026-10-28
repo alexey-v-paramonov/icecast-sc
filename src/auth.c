@@ -826,8 +826,10 @@ int auth_release_listener (client_t *client, const char *mount, mount_proxy *mou
             const char *mountreq = client->parser ? httpp_getvar (client->parser, HTTPP_VAR_RAWURI) : NULL;
             if (mountreq == NULL && client->parser)
                 mountreq = httpp_getvar (client->parser, HTTPP_VAR_URI);
+            time_t released = time (NULL);
             auth_user->client_id = client->connection.id;
-            auth_user->connect_time = client->connection.con_time;
+            auth_user->connection_duration = released >= client->connection.con_time
+                ? (uint64_t) (released - client->connection.con_time) : 0;
             auth_user->client_ip = strdup (client->connection.ip ? client->connection.ip : "");
             auth_user->client_agent = strdup (agent ? agent : "-");
             auth_user->client_user = client->username ? strdup (client->username) : NULL;

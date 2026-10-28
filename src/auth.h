@@ -46,7 +46,7 @@ typedef struct auth_client_tag
     unsigned char state;
     client_t    *client;
     uint64_t     client_id;
-    time_t       connect_time;
+    uint64_t     connection_duration;
     char        *client_ip;
     char        *client_agent;
     char        *client_user;

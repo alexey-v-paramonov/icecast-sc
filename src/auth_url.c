@@ -507,8 +507,7 @@ static auth_result url_remove_listener_sc (auth_client *auth_user)
 
     if (url->listener_remove_sc.url == NULL)
         return AUTH_OK;
-    uint64_t duration = now >= auth_user->connect_time
-        ? (uint64_t)(now - auth_user->connect_time) : 0;
+    uint64_t duration = auth_user->connection_duration;
     thread_mutex_lock (&url->updating);
     do
     {

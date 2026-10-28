@@ -3,4 +3,4 @@ set -euo pipefail
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
 "${DIR}/build" "$@"
-"${DIR}/upload"
+"${DIR}/upload" "$@"

@@ -1,10 +1,18 @@
 #!/bin/bash
 set -euo pipefail
 
-cd "$(dirname "$0")/../BIN"
-
-TARGETS="centos7 ubuntu20 ubuntu22 ubuntu24 ubuntu26"
+ALL_TARGETS="centos7 ubuntu20 ubuntu22 ubuntu24 ubuntu26"
+TARGETS="${*:-${ALL_TARGETS}}"
 S02_KEY="${S02_KEY:-$HOME/.ssh/s02_admin_ed25519}"
+
+for target in ${TARGETS}; do
+    case " ${ALL_TARGETS} " in
+        *" ${target} "*) ;;
+        *) echo "Unknown target: ${target}" >&2; exit 1 ;;
+    esac
+done
+
+cd "$(dirname "$0")/../BIN"
 
 for target in ${TARGETS}; do
     if [ ! -s "${target}/icecast-kh" ]; then
@@ -14,8 +22,12 @@ for target in ${TARGETS}; do
 done
 
 echo "=== Installing on test servers ==="
-scp -i "${S02_KEY}" ubuntu22/icecast-kh root@s02.radio-tochka.com:/opt/icecast/bin/
-scp ubuntu24/icecast-kh root@62.109.29.241:/opt/icecast/bin/
+for target in ${TARGETS}; do
+    case "${target}" in
+        ubuntu22) scp -i "${S02_KEY}" ubuntu22/icecast-kh root@s02.radio-tochka.com:/opt/icecast/bin/ ;;
+        ubuntu24) scp ubuntu24/icecast-kh root@62.109.29.241:/opt/icecast/bin/ ;;
+    esac
+done
 
 echo "=== Uploading to radio-tochka.com dist ==="
 for target in ${TARGETS}; do

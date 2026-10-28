@@ -30,6 +30,8 @@ class Backend(http.server.BaseHTTPRequestHandler):
         data = dict(urllib.parse.parse_qsl(body, keep_blank_values=True))
         if self.path.startswith("/delayed_add"):
             time.sleep(2.5)
+        if self.path.startswith("/queued_remove"):
+            time.sleep(2.5)
         with record_lock:
             records.append(data)
         if (
@@ -157,8 +159,10 @@ def run_handoff(source_bin, icecast_bin):
 <logging><accesslog>access.log</accesslog><errorlog>error.log</errorlog><loglevel>3</loglevel></logging>
 <mount><mount-name>/ok</mount-name><authentication type="url"><option name="handlers" value="4"/><option name="allow_duplicate_users" value="1"/><option name="timeout" value="2"/><option name="listener_add" value="%s/add"/><option name="listener_remove_sc" value="%s/remove"/></authentication></mount>
 <mount><mount-name>/disabled</mount-name><authentication type="url"><option name="handlers" value="4"/><option name="allow_duplicate_users" value="1"/><option name="timeout" value="2"/><option name="listener_add" value="%s/add"/><option name="listener_remove_sc" value="%s/drop"/></authentication></mount>
+<mount><mount-name>/queued</mount-name><authentication type="url"><option name="handlers" value="4"/><option name="allow_duplicate_users" value="1"/><option name="timeout" value="2"/><option name="listener_add" value="%s/add"/><option name="listener_remove_sc" value="%s/queued_remove"/></authentication></mount>
 </icecast>"""
-        % (port, base, base, base, backend_url, backend_url, backend_url, backend_url)
+        % (port, base, base, base, backend_url, backend_url, backend_url, backend_url,
+           backend_url, backend_url)
     )
     stdout = (base / "stdout.log").open("wb")
     env = dict(
@@ -172,7 +176,7 @@ def run_handoff(source_bin, icecast_bin):
     sources = []
     try:
         wait_port(port, process)
-        for mount in ("ok", "disabled"):
+        for mount in ("ok", "disabled", "queued"):
             sources.append(
                 subprocess.Popen(
                     [
@@ -235,6 +239,15 @@ def run_handoff(source_bin, icecast_bin):
             and item["agent"].startswith("HandoffOK/")
             for item in ok_removes
         )
+        queued = open_listener(port, "/queued", "HandoffQueued")
+        time.sleep(0.5)
+        close_listener(queued, False)
+        wait_for(
+            lambda: len(mount_records("/queued", "listener_remove")) == 1,
+            15,
+            "queued remove",
+        )
+        queued_duration = int(mount_records("/queued", "listener_remove")[0]["duration"])
         disabled_first = open_listener(port, "/disabled?handoff=1", "HandoffDisabled/1")
         close_listener(disabled_first, False)
         wait_for(
@@ -265,8 +278,10 @@ def run_handoff(source_bin, icecast_bin):
         )
         print("ok_removes=%d exact_fields=%s identity=%s" % (len(ok_removes), exact, identity))
         print("disabled_remove_posts=%d immediate_disabled=%s" % (len(disabled_removes), immediate))
+        print("queued_remove_duration=%d" % queued_duration)
         print("shutdown_exit=%d sanitizer=%s" % (process.returncode, sanitizer))
-        if process.returncode != 0 or not exact or not identity or not immediate or sanitizer:
+        if (process.returncode != 0 or not exact or not identity or not immediate
+                or sanitizer or queued_duration >= 2):
             return 1
         return 0
     finally:
