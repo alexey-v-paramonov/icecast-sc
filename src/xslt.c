@@ -88,6 +88,7 @@ typedef struct
 
 #define XSLREQ_DELAY            (1<<0)
 #define XSLREQ_ADM              (1<<1)
+#define XSLREQ_CACHE_OWNER      (1<<2)
 
 
 static int xslt_client (client_t *client);
@@ -256,7 +257,14 @@ static void xsl_req_clear (xsl_req *x)
     if (x->cache)
     {
         thread_mutex_lock (&cache_lock);
-        x->cache->flags &= ~XSLCACHE_PENDING;
+        // A waiting request may expire while the loader is still running.
+        // Only the request that reserved the slot may release its pending flag.
+        if (x->flags & XSLREQ_CACHE_OWNER)
+        {
+            x->cache->flags &= ~XSLCACHE_PENDING;
+            if (x->cache->stylesheet == NULL)
+                x->cache->next_check = 0;
+        }
         x->cache->refc--;
         thread_mutex_unlock (&cache_lock);
     }
@@ -278,6 +286,11 @@ static int xslt_cached (xsl_req *x, uint64_t now)
         {
             x->flags &= ~XSLREQ_DELAY;          // toggle off
             x->cache->cache_age = now;           // update to keep around
+            if (x->cache->stylesheet == NULL || x->cache->next_check <= now)
+            {
+                x->cache->flags |= XSLCACHE_PENDING;
+                x->flags |= XSLREQ_CACHE_OWNER;
+            }
         }
         thread_mutex_unlock (&cache_lock);
         return 1; // already set
@@ -333,7 +346,8 @@ static int xslt_cached (xsl_req *x, uint64_t now)
         if (cache[i].filename == NULL)
         {
             cache[i].filename = strdup (x->filename);
-            cache[i].cache_age = 0;
+            cache[i].cache_age = now;
+            x->flags |= XSLREQ_CACHE_OWNER;
             cache[i].flags = XSLCACHE_PENDING;  // init
             if (x->flags & XSLREQ_ADM)
                 cache[i].flags |= XSLCACHE_ADMIN;
@@ -348,6 +362,11 @@ static int xslt_cached (xsl_req *x, uint64_t now)
             x->flags &= ~XSLREQ_DELAY;          // toggle off
             cache[i].cache_age = now;           // update to keep around
             cache[i].flags &= ~XSLCACHE_FAILED; // drop for recheck
+            if (cache[i].stylesheet == NULL || cache[i].next_check <= now)
+            {
+                cache[i].flags |= XSLCACHE_PENDING;
+                x->flags |= XSLREQ_CACHE_OWNER;
+            }
         }
         cache[i].refc++;        // tag it to keep unchanged.
         thread_mutex_unlock (&cache_lock);
@@ -360,6 +379,7 @@ static int xslt_cached (xsl_req *x, uint64_t now)
 }
 
 
+// Caller holds sheet_lock and releases it on failure or after response creation.
 static int _apply_sheet (xsl_req *x)
 {
     client_t *client = x->client;
@@ -394,10 +414,7 @@ static int _apply_sheet (xsl_req *x)
     free (params);
 
     if (res == NULL)
-    {
-        thread_rwlock_unlock (&sheet_lock);
         return -1;
-    }
     xmlFreeDoc (x->doc);
     x->doc = res;
 
@@ -463,8 +480,10 @@ static int xslt_apply_sheet (xsl_req *x, uint64_t now)
 
                 thread_mutex_lock (&cache_lock);
                 cached->last_modified = file.st_mtime;
+                free (cached->disposition);
                 cached->disposition = dispos;
-                cached->flags &= ~(XSLCACHE_FAILED|XSLCACHE_PENDING);
+                cached->flags &= ~XSLCACHE_FAILED;
+                // Keep ownership until this request completes its response.
                 // drop refc after response done.
                 thread_mutex_unlock (&cache_lock);
             }
@@ -476,6 +495,7 @@ static int xslt_apply_sheet (xsl_req *x, uint64_t now)
         thread_rwlock_rlock (&sheet_lock);
         if (_apply_sheet (x) < 0)
         {
+            thread_rwlock_unlock (&sheet_lock);
             WARN1 ("problem applying stylesheet \"%s\"", x->filename);
             break;
         }
@@ -488,7 +508,8 @@ static int xslt_apply_sheet (xsl_req *x, uint64_t now)
         thread_mutex_lock (&cache_lock);
         cached->flags |= XSLCACHE_FAILED;
         if (cached->refc > 0) cached->refc--;
-        cached->flags &= ~XSLCACHE_PENDING;
+        if (x->flags & XSLREQ_CACHE_OWNER)
+            cached->flags &= ~XSLCACHE_PENDING;
         thread_mutex_unlock (&cache_lock);
         x->cache = NULL;
     }
@@ -553,7 +574,8 @@ static int xslt_prepare_response (xsl_req *x)
     } while (0);
 
     if (cached->refc > 0) cached->refc--;
-    cached->flags &= ~XSLCACHE_PENDING;
+    if (x->flags & XSLREQ_CACHE_OWNER)
+        cached->flags &= ~XSLCACHE_PENDING;
     // DEBUG3 ("Tmp: %s, cache %s, ref %d", (rc?"failed":"content"), cached->filename, cached->refc);
     thread_mutex_unlock (&cache_lock);
 
