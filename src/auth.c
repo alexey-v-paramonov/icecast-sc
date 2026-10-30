@@ -663,13 +663,22 @@ void auth_postprocess_source (auth_client *auth_user)
     {
         client_t *client = auth_user->client;
         const char *mount = auth_user->mount;
-        const char *req = httpp_getvar (client->parser, HTTPP_VAR_URI);
+        const char *command = httpp_getvar (client->parser, "__admin_cmd");
 
         auth_user->client = NULL;
-        if (strcmp (req, "/admin.cgi") == 0 || strncmp ("/admin/metadata", req, 15) == 0)
+        /* admin_handle_request saves the resolved command before queuing auth.
+         * Use it for all mount commands, including aliases and XSL variants.
+         * A SOURCE/PUT request must still start a source, even if it supplied
+         * an __admin_cmd header or uses an admin-looking mount name.
+         */
+        if (command && (client->parser->req_type == httpp_req_get ||
+                        client->parser->req_type == httpp_req_head))
         {
-            DEBUG2 ("metadata request (%s, %s)", req, mount);
-            admin_mount_request (client);
+            DEBUG2 ("admin request (%s, %s)", command, mount);
+            if (strcmp (command, "streams") == 0)
+                auth_add_listener ("/admin/streams", client);
+            else
+                admin_mount_request (client);
         }
         else
         {

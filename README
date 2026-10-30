@@ -20,3 +20,14 @@ MP3 delivery. The HTTP check uses FFmpeg and a temporary loopback server.
 
 These checks do not establish the cause of the October 28 production incident.
 Its HTTP access log and warning-level XSL diagnostics were unavailable.
+
+Mount admin URL authentication
+-----------------------------
+
+After URL source authentication, mount admin requests resume the saved admin
+command, including aliases and XSL variants, instead of attempting source
+startup. SOURCE and PUT requests retain their source startup behavior.
+
+Run `python3 tests/admin_auth/run.py --icecast /path/to/rebuilt/icecast` for
+HTTP checks of admin routing, denied credentials, source startup, static and
+global admin credentials, and continued audio delivery. Requires FFmpeg.
