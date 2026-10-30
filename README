@@ -2,3 +2,21 @@ This is a customized fork of the original Icecast-KH project, tailored for use w
 
 
 It includes several important updates and fixes specifically designed to enhance compatibility and performance with Streaming.Center.
+
+XSL status recovery
+-------------------
+
+The XSL cache gives each initial load or refresh one owning request. Expiring
+waiters release their references without clearing that owner's pending flag.
+An abandoned initial load remains retryable and its cache slot can be evicted.
+All transformation failures release the stylesheet read lock, including a
+missing stylesheet. A refresh also frees its preceding disposition string.
+
+Run `python3 tests/xslt_cache/run.py` for deterministic waiter/loader expiry,
+retry ownership, lock-release, and real-libxslt transformation checks.
+Run `python3 tests/xslt_cache/http_check.py --icecast /path/to/rebuilt/icecast`
+for concurrent HTTP requests, cache eviction, missing stylesheets and continued
+MP3 delivery. The HTTP check uses FFmpeg and a temporary loopback server.
+
+These checks do not establish the cause of the October 28 production incident.
+Its HTTP access log and warning-level XSL diagnostics were unavailable.
